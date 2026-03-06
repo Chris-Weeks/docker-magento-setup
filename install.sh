@@ -215,6 +215,14 @@ if [ "$INSTALL_TYPE" == "2" ]; then
 fi
 
 # ==========================================
+# 🎨 FRONTEND TOOLING (NODE & GRUNT)
+# ==========================================
+echo "🎨 Setting up Node.js & Grunt for frontend development..."
+docker-compose exec -T --user www-data web bash -c "if [ ! -f package.json ]; then cp package.json.sample package.json; fi"
+docker-compose exec -T --user www-data web bash -c "if [ ! -f Gruntfile.js ]; then cp Gruntfile.js.sample Gruntfile.js; fi"
+docker-compose exec -T --user www-data web npm install
+
+# ==========================================
 # ⚙️ FINAL CONFIGURATION
 # ==========================================
 echo "⚡ Linking Redis and RabbitMQ..."
@@ -240,6 +248,8 @@ if ! grep -q "$ALIAS_MARKER" ~/.bashrc; then
 alias m="docker-compose exec --user www-data web bin/magento"
 alias mc="docker-compose exec --user www-data web composer"
 alias mcli="docker-compose exec --user www-data web bash"
+alias mg="docker-compose exec --user www-data web grunt"
+alias mnpm="docker-compose exec --user www-data web npm"
 alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ pub/media/ generated/'"
 EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
