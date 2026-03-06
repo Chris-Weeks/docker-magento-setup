@@ -1,15 +1,14 @@
 #!/bin/bash
+set -e # Safety switch: Stop the script immediately if any command fails
 
 # ==========================================
 # 🛑 INITIALIZATION & DOWNLOADS
 # ==========================================
-# CHANGE THIS: The raw URL of your public repository branch
 REPO_BASE_URL="https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main"
 
 echo "🚀 Welcome to the Magento 2 Local Environment Setup"
 echo "⬇️  Downloading Docker configurations from public repository..."
 
-# Download the required Docker files silently
 curl -sS -o docker-compose.yml "$REPO_BASE_URL/docker-compose.yml"
 curl -sS -o Dockerfile "$REPO_BASE_URL/Dockerfile"
 curl -sS -o toggle-xdebug.sh "$REPO_BASE_URL/toggle-xdebug.sh"
@@ -36,16 +35,12 @@ if [ "$INSTALL_TYPE" == "1" ]; then
 
     read -p "Admin First Name [Dev]: " ADMIN_FIRST
     ADMIN_FIRST=${ADMIN_FIRST:-Dev}
-
     read -p "Admin Last Name [Admin]: " ADMIN_LAST
     ADMIN_LAST=${ADMIN_LAST:-Admin}
-
     read -p "Admin Email [admin@example.com]: " ADMIN_EMAIL
     ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-
     read -p "Admin Username [admin]: " ADMIN_USER
     ADMIN_USER=${ADMIN_USER:-admin}
-
     read -p "Admin Password [AdminPassword123!]: " ADMIN_PASS
     ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
 
@@ -66,23 +61,19 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
 
     echo ""
     echo "--- 🧩 THIRD-PARTY MODULES (Optional) ---"
-    echo "If your repo requires third-party keys (like Amasty, Mageplaza), enter them below."
+    echo "If your repo requires third-party keys (like Amasty), enter them below."
     echo "Press Enter with a blank URL to finish or skip."
 
     VENDOR_COUNT=0
     while true; do
         echo ""
         read -p "Vendor Composer URL (e.g., composer.amasty.com) [Blank to exit]: " V_URL
-        
-        if [ -z "$V_URL" ]; then
-            break
-        fi
+        if [ -z "$V_URL" ]; then break; fi
         
         read -p "Vendor Username / Public Key: " V_PUB
         read -p "Vendor Password / Private Key: " V_PRIV
 
         VENDOR_COUNT=$((VENDOR_COUNT+1))
-        
         export VENDOR_URL_$VENDOR_COUNT="$V_URL"
         export VENDOR_PUB_KEY_$VENDOR_COUNT="$V_PUB"
         export VENDOR_PRIV_KEY_$VENDOR_COUNT="$V_PRIV"
@@ -99,7 +90,6 @@ EOF
         U_VAR="VENDOR_URL_$i"
         PUB_VAR="VENDOR_PUB_KEY_$i"
         PRIV_VAR="VENDOR_PRIV_KEY_$i"
-        
         echo "$U_VAR=${!U_VAR}" >> .env
         echo "$PUB_VAR=${!PUB_VAR}" >> .env
         echo "$PRIV_VAR=${!PRIV_VAR}" >> .env
@@ -118,21 +108,11 @@ else
 fi
 
 # ==========================================
-# 📦 PRE-FLIGHT REPOSITORY CLONE
+# 🐳 PRE-FLIGHT & DOCKER BUILD
 # ==========================================
-# We must clone the repo BEFORE Docker starts so the local user owns the directory!
-if [ "$INSTALL_TYPE" == "2" ]; then
-    if [ ! -d "magento-src/.git" ]; then
-        echo "📦 Cloning Repository..."
-        git clone "$GIT_REPO_URL" magento-src
-    else
-        echo "✅ Repository already exists in magento-src/. Skipping clone."
-    fi
-fi
+# Create the directory before Docker so the local WSL user retains ownership
+mkdir -p magento-src
 
-# ==========================================
-# 🐳 DOCKER BUILD & INITIALIZATION
-# ==========================================
 echo ""
 echo "🐳 Building Docker environment..."
 docker-compose up -d --build
@@ -141,23 +121,51 @@ echo "⏳ Waiting 30s for MariaDB to initialize..."
 sleep 30
 
 # ==========================================
-# ⚙️ COMPOSER EXECUTION
+# 📥 BASE MAGENTO INSTALLATION (Applies to both options)
 # ==========================================
-if [ "$INSTALL_TYPE" == "1" ]; then
-    echo "🔑 Authenticating Composer globally..."
-    docker-compose exec -T web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
+echo "🔑 Authenticating standard Magento Repo globally..."
+docker-compose exec -T web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
-    if [ ! -f "magento-src/bin/magento" ]; then
-        echo "📥 Downloading fresh Magento 2.4.7-p8..."
-        docker-compose exec -T web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
-    else
-        echo "✅ Magento codebase already exists. Skipping download."
-    fi
+if [ ! -f "magento-src/bin/magento" ]; then
+    echo "📥 Downloading fresh base Magento 2.4.7-p8..."
+    docker-compose exec -T web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
+fi
 
-elif [ "$INSTALL_TYPE" == "2" ]; then
-    echo "🔑 Authenticating standard Magento Repo globally..."
-    docker-compose exec -T web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
+if [ ! -f "magento-src/app/etc/env.php" ]; then
+    echo "⚙️ Running base Magento setup:install..."
+    docker-compose exec -T web bin/magento setup:install \
+        --base-url="$BASE_URL" \
+        --db-host="db" \
+        --db-name="magento" \
+        --db-user="magento" \
+        --db-password="magentopassword" \
+        --admin-firstname="$ADMIN_FIRST" \
+        --admin-lastname="$ADMIN_LAST" \
+        --admin-email="$ADMIN_EMAIL" \
+        --admin-user="$ADMIN_USER" \
+        --admin-password="$ADMIN_PASS" \
+        --language="en_US" \
+        --currency="USD" \
+        --timezone="UTC" \
+        --use-rewrites="1" \
+        --search-engine="elasticsearch7" \
+        --elasticsearch-host="elasticsearch" \
+        --elasticsearch-port="9200"
+fi
 
+# ==========================================
+# 🔄 OPTION 2: MERGE & UPGRADE EXISTING REPO
+# ==========================================
+if [ "$INSTALL_TYPE" == "2" ]; then
+    echo "📦 Pulling custom repository into a temporary folder..."
+    git clone "$GIT_REPO_URL" ../magento-temp-repo
+
+    echo "🔄 Merging custom repository over base install..."
+    # cp -a safely overwrites files and includes hidden directories like .git
+    cp -a ../magento-temp-repo/. ./magento-src/
+    rm -rf ../magento-temp-repo
+
+    # Loop through and authenticate all third-party vendors
     if [ "$VENDOR_COUNT" -gt 0 ]; then
         for (( i=1; i<=$VENDOR_COUNT; i++ )); do
             U_VAR="VENDOR_URL_$i"
@@ -173,33 +181,16 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
         done
     fi
 
-    echo "📥 Installing Composer dependencies..."
+    echo "📥 Installing custom Composer dependencies..."
     docker-compose exec -T web composer install -d /var/www/html
+
+    echo "🚀 Running setup:upgrade to register custom modules..."
+    docker-compose exec -T web bin/magento setup:upgrade
 fi
 
 # ==========================================
-# ⚙️ MAGENTO CONFIGURATION
+# ⚙️ FINAL CONFIGURATION (Applies to both options)
 # ==========================================
-echo "⚙️ Running Magento setup:install..."
-docker-compose exec -T web bin/magento setup:install \
-    --base-url="$BASE_URL" \
-    --db-host="db" \
-    --db-name="magento" \
-    --db-user="magento" \
-    --db-password="magentopassword" \
-    --admin-firstname="$ADMIN_FIRST" \
-    --admin-lastname="$ADMIN_LAST" \
-    --admin-email="$ADMIN_EMAIL" \
-    --admin-user="$ADMIN_USER" \
-    --admin-password="$ADMIN_PASS" \
-    --language="en_US" \
-    --currency="USD" \
-    --timezone="UTC" \
-    --use-rewrites="1" \
-    --search-engine="elasticsearch7" \
-    --elasticsearch-host="elasticsearch" \
-    --elasticsearch-port="9200"
-
 echo "⚡ Linking Redis and RabbitMQ..."
 docker-compose exec -T web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
 docker-compose exec -T web bin/magento setup:config:set --page-cache=redis --page-cache-redis-server=redis --page-cache-redis-db=1 -n
@@ -208,7 +199,7 @@ docker-compose exec -T web bin/magento setup:config:set --amqp-host=rabbitmq --a
 
 echo "🧹 Clearing Cache..."
 docker-compose exec -T web bin/magento cache:flush
-docker-compose exec -T web chmod -R 777 var/ pub/static/ generated/
+docker-compose exec -T web bash -c "chmod -R 777 var/ pub/static/ generated/ || true"
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
