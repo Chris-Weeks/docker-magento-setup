@@ -205,7 +205,7 @@ docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-h
 
 echo "🧹 Clearing Cache..."
 docker-compose exec -T --user www-data web bin/magento cache:flush
-docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ generated/ || true"
+docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ generated/ pub/media/ || true"
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
