@@ -2,7 +2,7 @@
 
 This repository contains the automated setup script and Docker orchestration files required to spin up a production-ready Magento 2 environment locally. 
 
-By utilizing Docker inside Windows Subsystem for Linux (WSL 2), we achieve native Linux filesystem performance while developing on a Windows machine.
+By utilizing Docker inside Windows Subsystem for Linux (WSL 2), we achieve native Linux filesystem performance while developing on a Windows machine. The setup automatically maps your local Windows user ID to the Docker container's `www-data` user, permanently solving the dreaded "Docker Root Binding" permission errors.
 
 ## 🛑 Prerequisites
 
@@ -16,11 +16,13 @@ Before running the setup script, you must ensure your Windows machine is prepped
    * Download and install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop).
    * Go to **Settings (Gear Icon) > General** and ensure **Use the WSL 2 based engine** is checked.
    * Go to **Settings > Resources > WSL Integration** and turn the toggle **ON** for your installed Ubuntu distribution.
-
 3. **Get Your Magento Access Keys:**
    * Log into [marketplace.magento.com](https://marketplace.magento.com/).
    * Go to **My Profile > Access Keys**.
    * Have your **Public Key** and **Private Key** ready. (If the project uses third-party modules like Amasty or Mageplaza, have those composer credentials ready as well).
+4. **Update your Windows Hosts File:**
+   * To route custom local domains (like `magento.test`) to Docker, open Notepad as Administrator, edit `C:\Windows\System32\drivers\etc\hosts`, and add:
+     `127.0.0.1    magento.test`
 
 ---
 
@@ -30,30 +32,51 @@ Do **not** run this in Windows Command Prompt or PowerShell.
 Open your **Ubuntu (WSL)** terminal and paste this single command:
 
 ```bash
-mkdir -p ~/Sites/magentocd && cd $_ && bash -c "$(curl -fsSL https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh)"
+mkdir -p ~/Sites/magentocd && cd $_ && bash -c "$(curl -fsSL [https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh](https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh))"
 ```
 
-### What this script does automatically:
-1. Downloads the necessary Docker and configuration files.
-2. Prompts you for your Magento/Git credentials.
-3. Builds a lightweight Debian-based `php:8.2-apache` container stack.
-4. Clones the repository (or installs a fresh Magento instance).
-5. Installs Composer dependencies.
-6. Runs the Magento database installation and connects Redis/RabbitMQ.
-7. Installs daily-use developer aliases into your terminal.
+### The Setup Wizard
+The script is interactive and will guide you through the setup. 
+
+* **Port Detection:** It will automatically scan your local machine for blocked ports (e.g., if IIS or Skype is hogging port 80). If a collision is found, you can dynamically assign a new port on the fly.
+* **Installation Modes:** You will be prompted to choose an installation path:
+  * **Option 1 (Clean Slate):** Installs a completely fresh, blank copy of Magento 2.4.7-p8. Perfect for exploring the core or starting a brand-new project.
+  * **Option 2 (Existing Repo):** Clones an existing custom repository, automatically fixes any Windows CRLF line-ending conflicts, merges the custom code over the base install, and compiles the dependencies.
 
 ---
 
-## 🛠️ Everyday Developer Workflow
+## 🛠️ Helpful Commands & Developer Workflow
 
-To make interacting with the Docker containers painless, the setup script automatically installed several aliases into your `~/.bashrc` profile. You can run these from anywhere inside the `~/Sites/magentocd` directory:
+To make interacting with the Docker containers painless, the setup script automatically installs several aliases into your `~/.bashrc` profile. You can run these from anywhere inside the `~/Sites/magentocd` directory without needing to manually `docker exec` into the containers.
 
+### Backend & Core Aliases
 * **`m`** - The standard Magento CLI. 
   * *Example:* `m cache:flush` or `m setup:upgrade`
 * **`mc`** - The Composer CLI.
   * *Example:* `mc require vendor/module`
 * **`mcli`** - Drops you directly into the web container's bash shell.
-* **`mclean`** - **Use this when switching Git branches!** It safely wipes generated code, view_preprocessed, and caches, ensuring your new branch compiles cleanly without fatal errors.
+* **`mclean`** - **Use this when switching Git branches or encountering fatal DI errors!** It safely wipes generated code, view_preprocessed, caches, and permanently unlocks the `pub/media` directory, ensuring your new branch compiles cleanly.
+
+### Frontend Tooling (Node.js & Grunt)
+The environment includes Node 18.x and Grunt CLI out of the box so frontend developers can compile themes in real-time.
+
+* **`mnpm`** - The NPM CLI.
+  * *Example:* `mnpm install` (Runs `npm install` inside the container).
+* **`mg`** - The Grunt CLI. Use this to compile LESS to CSS quickly.
+  * `mg clean` - Drops the static files and preprocessed LESS.
+  * `mg exec:luma` - Republishes symlinks for the specified theme (e.g., `luma`).
+  * `mg less:luma` - Compiles the LESS down into CSS.
+  * `mg watch` - Listens for saved file changes and recompiles instantly.
+
+---
+
+## 🌐 Service URLs
+Once the setup is complete, your local services are mapped to the following default ports (unless you changed them during the Port Detection phase):
+
+* **Storefront & Admin:** `http://magento.test/` (or `http://localhost:8000/`)
+* **phpMyAdmin:** `http://localhost:8081` *(User: `root` / Pass: `rootpassword`)*
+* **RabbitMQ:** `http://localhost:15672` *(User: `guest` / Pass: `guest`)*
+* **Mailpit (Local Email Catcher):** `http://localhost:8025`
 
 ---
 
@@ -66,16 +89,6 @@ In your terminal (inside the project root), run:
 ./toggle-xdebug.sh
 ```
 *This script safely renames the configuration file and gracefully restarts Apache in less than a second.*
-
----
-
-## 🌐 Service URLs
-Once the setup is complete, your local services are mapped to the following ports:
-
-* **Storefront & Admin:** `http://localhost:8000`
-* **phpMyAdmin:** `http://localhost:8081` *(User: `root` / Pass: `rootpassword`)*
-* **RabbitMQ:** `http://localhost:15672` *(User: `guest` / Pass: `guest`)*
-* **Mailpit (Local Email Catcher):** `http://localhost:8025`
 
 ---
 
@@ -106,14 +119,13 @@ PhpStorm needs to know how the files on your Windows machine map to the files in
 
 1. Go to **File > Settings > PHP > Servers**.
 2. Click the `+` icon to add a new server.
-3. **Name:** `magento.test` (or `localhost` depending on your Base URL setup).
-4. **Host:** `magento.test` (or `localhost`).
-5. **Port:** `8000`.
+3. **Name:** `magento.test` (Match this to your chosen Base URL).
+4. **Host:** `magento.test`.
+5. **Port:** `80` (Or whatever port you bound the web container to).
 6. Check the box that says **Use path mappings**.
 7. In the file tree below, find your local project root (`.../magentocd/magento-src`).
 8. In the column next to it (Absolute path on the server), type: `/var/www/html`.
 9. Click **Apply** and **OK**.
-
 
 ### 4. Catching Breakpoints with Xdebug
 Xdebug is pre-configured to communicate back to your host machine via port `9003`. 
@@ -122,8 +134,8 @@ Xdebug is pre-configured to communicate back to your host machine via port `9003
 2. Open your WSL terminal and run the toggle script to turn Xdebug on:
    ```bash
    ./toggle-xdebug.sh
-3. Set a breakpoint in your code (e.g., pub/index.php).
+   ```
+3. Set a breakpoint in your code (e.g., `pub/index.php`).
 4. Refresh your browser. PhpStorm should immediately flash and pause execution at your breakpoint!
 
-(Note: Don't forget to run ./toggle-xdebug.sh again to turn it off when you are done debugging, as Xdebug slows down page load times significantly).
-
+*(Note: Don't forget to run `./toggle-xdebug.sh` again to turn it off when you are done debugging, as Xdebug slows down page load times significantly).*
