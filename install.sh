@@ -172,6 +172,10 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     cp -a ../magento-temp-repo/. ./magento-src/
     rm -rf ../magento-temp-repo
 
+    echo "🔧 Fixing potential Windows line-ending conflicts..."
+    sed -i 's/\r$//' ./magento-src/bin/magento
+    chmod +x ./magento-src/bin/magento
+
     if [ "$VENDOR_COUNT" -gt 0 ]; then
         for (( i=1; i<=$VENDOR_COUNT; i++ )); do
             U_VAR="VENDOR_URL_$i"
