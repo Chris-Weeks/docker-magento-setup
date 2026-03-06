@@ -28,11 +28,9 @@ if [ "$INSTALL_TYPE" == "1" ]; then
     echo ""
     echo "--- 🧼 CLEAN SLATE CONFIGURATION ---"
     
-    # Require Magento Keys
     while [ -z "$MAGENTO_PUB_KEY" ]; do read -p "Magento Public Key [Required]: " MAGENTO_PUB_KEY; done
     while [ -z "$MAGENTO_PRIV_KEY" ]; do read -p "Magento Private Key [Required]: " MAGENTO_PRIV_KEY; done
 
-    # Optional variables with defaults
     read -p "Base URL [http://localhost:8000/]: " BASE_URL
     BASE_URL=${BASE_URL:-http://localhost:8000/}
 
@@ -51,7 +49,6 @@ if [ "$INSTALL_TYPE" == "1" ]; then
     read -p "Admin Password [AdminPassword123!]: " ADMIN_PASS
     ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
 
-    # Generate the .env file
     cat <<EOF > .env
 MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
 MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
@@ -86,13 +83,11 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
 
         VENDOR_COUNT=$((VENDOR_COUNT+1))
         
-        # Store variables dynamically
         export VENDOR_URL_$VENDOR_COUNT="$V_URL"
         export VENDOR_PUB_KEY_$VENDOR_COUNT="$V_PUB"
         export VENDOR_PRIV_KEY_$VENDOR_COUNT="$V_PRIV"
     done
 
-    # Generate the base .env file
     cat <<EOF > .env
 GIT_REPO_URL=$GIT_REPO_URL
 MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
@@ -100,7 +95,6 @@ MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
 VENDOR_COUNT=$VENDOR_COUNT
 EOF
 
-    # Append the dynamic third-party keys to the .env file
     for (( i=1; i<=$VENDOR_COUNT; i++ )); do
         U_VAR="VENDOR_URL_$i"
         PUB_VAR="VENDOR_PUB_KEY_$i"
@@ -111,7 +105,6 @@ EOF
         echo "$PRIV_VAR=${!PRIV_VAR}" >> .env
     done
 
-    # Default values for the Existing Repo installation step
     BASE_URL="http://localhost:8000/"
     ADMIN_FIRST="Dev"
     ADMIN_LAST="Admin"
@@ -125,6 +118,19 @@ else
 fi
 
 # ==========================================
+# 📦 PRE-FLIGHT REPOSITORY CLONE
+# ==========================================
+# We must clone the repo BEFORE Docker starts so the local user owns the directory!
+if [ "$INSTALL_TYPE" == "2" ]; then
+    if [ ! -d "magento-src/.git" ]; then
+        echo "📦 Cloning Repository..."
+        git clone "$GIT_REPO_URL" magento-src
+    else
+        echo "✅ Repository already exists in magento-src/. Skipping clone."
+    fi
+fi
+
+# ==========================================
 # 🐳 DOCKER BUILD & INITIALIZATION
 # ==========================================
 echo ""
@@ -135,7 +141,7 @@ echo "⏳ Waiting 30s for MariaDB to initialize..."
 sleep 30
 
 # ==========================================
-# 📦 INSTALLATION EXECUTION
+# ⚙️ COMPOSER EXECUTION
 # ==========================================
 if [ "$INSTALL_TYPE" == "1" ]; then
     echo "🔑 Authenticating Composer globally..."
@@ -149,17 +155,9 @@ if [ "$INSTALL_TYPE" == "1" ]; then
     fi
 
 elif [ "$INSTALL_TYPE" == "2" ]; then
-    if [ ! -d "magento-src/.git" ]; then
-        echo "📦 Cloning Repository..."
-        git clone "$GIT_REPO_URL" magento-src
-    else
-        echo "✅ Repository already exists in magento-src/. Skipping clone."
-    fi
-
     echo "🔑 Authenticating standard Magento Repo globally..."
     docker-compose exec -T web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
-    # Loop through and authenticate all third-party vendors
     if [ "$VENDOR_COUNT" -gt 0 ]; then
         for (( i=1; i<=$VENDOR_COUNT; i++ )); do
             U_VAR="VENDOR_URL_$i"
@@ -218,7 +216,6 @@ docker-compose exec -T web chmod -R 777 var/ pub/static/ generated/
 echo "🛠️ Configuring WSL Developer Aliases..."
 ALIAS_MARKER="# Magento 2 Docker Aliases"
 
-# Check if aliases already exist to prevent duplicating them
 if ! grep -q "$ALIAS_MARKER" ~/.bashrc; then
     cat << 'EOF' >> ~/.bashrc
 
