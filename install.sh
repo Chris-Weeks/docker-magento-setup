@@ -34,27 +34,6 @@ if [ "$INSTALL_TYPE" == "1" ]; then
     while [ -z "$MAGENTO_PUB_KEY" ]; do read -p "Magento Public Key [Required]: " MAGENTO_PUB_KEY; done
     while [ -z "$MAGENTO_PRIV_KEY" ]; do read -p "Magento Private Key [Required]: " MAGENTO_PRIV_KEY; done
 
-    read -p "Base URL [http://localhost:8000/]: " BASE_URL
-    BASE_URL=${BASE_URL:-http://localhost:8000/}
-
-    read -p "Admin First Name [Dev]: " ADMIN_FIRST
-    ADMIN_FIRST=${ADMIN_FIRST:-Dev}
-    read -p "Admin Last Name [Admin]: " ADMIN_LAST
-    ADMIN_LAST=${ADMIN_LAST:-Admin}
-    read -p "Admin Email [admin@example.com]: " ADMIN_EMAIL
-    ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-    read -p "Admin Username [admin]: " ADMIN_USER
-    ADMIN_USER=${ADMIN_USER:-admin}
-    read -p "Admin Password [AdminPassword123!]: " ADMIN_PASS
-    ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
-
-    cat <<EOF > .env
-UID=$LOCAL_UID
-GID=$LOCAL_GID
-MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
-MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
-EOF
-
 elif [ "$INSTALL_TYPE" == "2" ]; then
     echo ""
     echo "--- ☁️ EXISTING REPOSITORY CONFIGURATION ---"
@@ -84,16 +63,44 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
         export VENDOR_PUB_KEY_$VENDOR_COUNT="$V_PUB"
         export VENDOR_PRIV_KEY_$VENDOR_COUNT="$V_PRIV"
     done
+else
+    echo "❌ Invalid selection. Exiting."
+    exit 1
+fi
 
-    cat <<EOF > .env
+# 🌍 SHARED SITE SETTINGS (Applies to both options)
+echo ""
+echo "--- 🌍 GENERAL SITE SETTINGS ---"
+read -p "Base URL [http://magento.test/]: " BASE_URL
+BASE_URL=${BASE_URL:-http://magento.test/}
+
+read -p "Admin First Name [Dev]: " ADMIN_FIRST
+ADMIN_FIRST=${ADMIN_FIRST:-Dev}
+read -p "Admin Last Name [Admin]: " ADMIN_LAST
+ADMIN_LAST=${ADMIN_LAST:-Admin}
+read -p "Admin Email [admin@example.com]: " ADMIN_EMAIL
+ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+read -p "Admin Username [admin]: " ADMIN_USER
+ADMIN_USER=${ADMIN_USER:-admin}
+read -p "Admin Password [AdminPassword123!]: " ADMIN_PASS
+ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
+
+read -p "Default Language [en_US]: " MAGENTO_LANG
+MAGENTO_LANG=${MAGENTO_LANG:-en_US}
+read -p "Default Currency [USD]: " MAGENTO_CURRENCY
+MAGENTO_CURRENCY=${MAGENTO_CURRENCY:-USD}
+
+# GENERATE ENV FILE
+cat <<EOF > .env
 UID=$LOCAL_UID
 GID=$LOCAL_GID
-GIT_REPO_URL=$GIT_REPO_URL
 MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
 MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
-VENDOR_COUNT=$VENDOR_COUNT
 EOF
 
+if [ "$INSTALL_TYPE" == "2" ]; then
+    echo "GIT_REPO_URL=$GIT_REPO_URL" >> .env
+    echo "VENDOR_COUNT=$VENDOR_COUNT" >> .env
     for (( i=1; i<=$VENDOR_COUNT; i++ )); do
         U_VAR="VENDOR_URL_$i"
         PUB_VAR="VENDOR_PUB_KEY_$i"
@@ -102,17 +109,6 @@ EOF
         echo "$PUB_VAR=${!PUB_VAR}" >> .env
         echo "$PRIV_VAR=${!PRIV_VAR}" >> .env
     done
-
-    BASE_URL="http://localhost:8000/"
-    ADMIN_FIRST="Dev"
-    ADMIN_LAST="Admin"
-    ADMIN_EMAIL="admin@example.com"
-    ADMIN_USER="admin"
-    ADMIN_PASS="AdminPassword123!"
-
-else
-    echo "❌ Invalid selection. Exiting."
-    exit 1
 fi
 
 # ==========================================
@@ -152,8 +148,8 @@ if [ ! -f "magento-src/app/etc/env.php" ]; then
         --admin-email="$ADMIN_EMAIL" \
         --admin-user="$ADMIN_USER" \
         --admin-password="$ADMIN_PASS" \
-        --language="en_US" \
-        --currency="USD" \
+        --language="$MAGENTO_LANG" \
+        --currency="$MAGENTO_CURRENCY" \
         --timezone="UTC" \
         --use-rewrites="1" \
         --search-engine="elasticsearch7" \
@@ -209,7 +205,7 @@ docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-h
 
 echo "🧹 Clearing Cache..."
 docker-compose exec -T --user www-data web bin/magento cache:flush
-docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ generated/ pub/media/ || true"
+docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ pub/media/ generated/ || true"
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
@@ -224,7 +220,7 @@ if ! grep -q "$ALIAS_MARKER" ~/.bashrc; then
 alias m="docker-compose exec --user www-data web bin/magento"
 alias mc="docker-compose exec --user www-data web composer"
 alias mcli="docker-compose exec --user www-data web bash"
-alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ generated/'"
+alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ pub/media/ generated/'"
 EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
 else
