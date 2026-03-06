@@ -18,6 +18,10 @@ chmod +x toggle-xdebug.sh
 LOCAL_UID=$(id -u)
 LOCAL_GID=$(id -g)
 
+# Start building the .env file
+echo "UID=$LOCAL_UID" > .env
+echo "GID=$LOCAL_GID" >> .env
+
 # ==========================================
 # 🗣️ INTERACTIVE PROMPTS
 # ==========================================
@@ -30,14 +34,12 @@ read -p "Enter 1 or 2: " INSTALL_TYPE
 if [ "$INSTALL_TYPE" == "1" ]; then
     echo ""
     echo "--- 🧼 CLEAN SLATE CONFIGURATION ---"
-    
     while [ -z "$MAGENTO_PUB_KEY" ]; do read -p "Magento Public Key [Required]: " MAGENTO_PUB_KEY; done
     while [ -z "$MAGENTO_PRIV_KEY" ]; do read -p "Magento Private Key [Required]: " MAGENTO_PRIV_KEY; done
 
 elif [ "$INSTALL_TYPE" == "2" ]; then
     echo ""
     echo "--- ☁️ EXISTING REPOSITORY CONFIGURATION ---"
-    
     echo "💡 Tip: Use an SSH URL (git@...) or include your token (https://<token>@...) to bypass prompts."
     while [ -z "$GIT_REPO_URL" ]; do read -p "Git Repository URL: " GIT_REPO_URL; done
 
@@ -46,33 +48,74 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
 
     echo ""
     echo "--- 🧩 THIRD-PARTY MODULES (Optional) ---"
-    echo "If your repo requires third-party keys (like Amasty), enter them below."
-    echo "Press Enter with a blank URL to finish or skip."
-
     VENDOR_COUNT=0
     while true; do
-        echo ""
         read -p "Vendor Composer URL (e.g., composer.amasty.com) [Blank to exit]: " V_URL
         if [ -z "$V_URL" ]; then break; fi
-        
         read -p "Vendor Username / Public Key: " V_PUB
         read -p "Vendor Password / Private Key: " V_PRIV
 
         VENDOR_COUNT=$((VENDOR_COUNT+1))
-        export VENDOR_URL_$VENDOR_COUNT="$V_URL"
-        export VENDOR_PUB_KEY_$VENDOR_COUNT="$V_PUB"
-        export VENDOR_PRIV_KEY_$VENDOR_COUNT="$V_PRIV"
+        echo "VENDOR_URL_$VENDOR_COUNT=$V_URL" >> .env
+        echo "VENDOR_PUB_KEY_$VENDOR_COUNT=$V_PUB" >> .env
+        echo "VENDOR_PRIV_KEY_$VENDOR_COUNT=$V_PRIV" >> .env
     done
+    echo "GIT_REPO_URL=$GIT_REPO_URL" >> .env
+    echo "VENDOR_COUNT=$VENDOR_COUNT" >> .env
 else
     echo "❌ Invalid selection. Exiting."
     exit 1
 fi
 
-# 🌍 SHARED SITE SETTINGS (Applies to both options)
+echo "MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY" >> .env
+echo "MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY" >> .env
+
+# ==========================================
+# 🔍 PRE-FLIGHT PORT DETECTION
+# ==========================================
+echo ""
+echo "--- 🔍 PORT AVAILABILITY CHECK ---"
+
+check_port() {
+    local port=$1
+    local service=$2
+    local env_var=$3
+
+    # Check if port is in use using bash network sockets
+    while (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; do
+        echo "⚠️  Port $port is already in use (needed for $service)."
+        read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
+        port=$new_port
+    done
+    
+    echo "$env_var=$port" >> .env
+    echo "✅ $service will use port $port"
+}
+
+check_port 80 "Magento Web" "WEB_PORT"
+check_port 3306 "MariaDB" "DB_PORT"
+check_port 9200 "Elasticsearch" "ES_PORT"
+check_port 6379 "Redis" "REDIS_PORT"
+check_port 5672 "RabbitMQ AMQP" "RMQ_PORT"
+check_port 15672 "RabbitMQ UI" "RMQ_MGMT_PORT"
+check_port 8081 "phpMyAdmin" "PMA_PORT"
+check_port 8025 "Mailpit UI" "MAILPIT_UI_PORT"
+check_port 1025 "Mailpit SMTP" "MAILPIT_SMTP_PORT"
+
+# Grab the web port from the .env file to help with the Base URL prompt
+FINAL_WEB_PORT=$(grep WEB_PORT .env | cut -d '=' -f 2)
+SUGGESTED_URL="http://magento.test/"
+if [ "$FINAL_WEB_PORT" != "80" ]; then
+    SUGGESTED_URL="http://magento.test:$FINAL_WEB_PORT/"
+fi
+
+# ==========================================
+# 🌍 SHARED SITE SETTINGS
+# ==========================================
 echo ""
 echo "--- 🌍 GENERAL SITE SETTINGS ---"
-read -p "Base URL [http://magento.test/]: " BASE_URL
-BASE_URL=${BASE_URL:-http://magento.test/}
+read -p "Base URL [$SUGGESTED_URL]: " BASE_URL
+BASE_URL=${BASE_URL:-$SUGGESTED_URL}
 
 read -p "Admin First Name [Dev]: " ADMIN_FIRST
 ADMIN_FIRST=${ADMIN_FIRST:-Dev}
@@ -84,37 +127,14 @@ read -p "Admin Username [admin]: " ADMIN_USER
 ADMIN_USER=${ADMIN_USER:-admin}
 read -p "Admin Password [AdminPassword123!]: " ADMIN_PASS
 ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
-
 read -p "Default Language [en_US]: " MAGENTO_LANG
 MAGENTO_LANG=${MAGENTO_LANG:-en_US}
 read -p "Default Currency [USD]: " MAGENTO_CURRENCY
 MAGENTO_CURRENCY=${MAGENTO_CURRENCY:-USD}
 
-# GENERATE ENV FILE
-cat <<EOF > .env
-UID=$LOCAL_UID
-GID=$LOCAL_GID
-MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
-MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
-EOF
-
-if [ "$INSTALL_TYPE" == "2" ]; then
-    echo "GIT_REPO_URL=$GIT_REPO_URL" >> .env
-    echo "VENDOR_COUNT=$VENDOR_COUNT" >> .env
-    for (( i=1; i<=$VENDOR_COUNT; i++ )); do
-        U_VAR="VENDOR_URL_$i"
-        PUB_VAR="VENDOR_PUB_KEY_$i"
-        PRIV_VAR="VENDOR_PRIV_KEY_$i"
-        echo "$U_VAR=${!U_VAR}" >> .env
-        echo "$PUB_VAR=${!PUB_VAR}" >> .env
-        echo "$PRIV_VAR=${!PRIV_VAR}" >> .env
-    done
-fi
-
 # ==========================================
-# 🐳 PRE-FLIGHT & DOCKER BUILD
+# 🐳 DOCKER BUILD
 # ==========================================
-# Create the directory before Docker so the local WSL user retains ownership
 mkdir -p magento-src
 
 echo ""
@@ -125,7 +145,7 @@ echo "⏳ Waiting 30s for MariaDB to initialize..."
 sleep 30
 
 # ==========================================
-# 📥 BASE MAGENTO INSTALLATION (Applies to both options)
+# 📥 MAGENTO INSTALLATION
 # ==========================================
 echo "🔑 Authenticating standard Magento Repo globally..."
 docker-compose exec -T --user www-data web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
@@ -158,7 +178,7 @@ if [ ! -f "magento-src/app/etc/env.php" ]; then
 fi
 
 # ==========================================
-# 🔄 OPTION 2: MERGE & UPGRADE EXISTING REPO
+# 🔄 MERGE & UPGRADE EXISTING REPO
 # ==========================================
 if [ "$INSTALL_TYPE" == "2" ]; then
     echo "📦 Pulling custom repository into a temporary folder..."
@@ -195,7 +215,7 @@ if [ "$INSTALL_TYPE" == "2" ]; then
 fi
 
 # ==========================================
-# ⚙️ FINAL CONFIGURATION (Applies to both options)
+# ⚙️ FINAL CONFIGURATION
 # ==========================================
 echo "⚡ Linking Redis and RabbitMQ..."
 docker-compose exec -T --user www-data web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
@@ -230,8 +250,12 @@ fi
 # ==========================================
 # 🎉 FINISH
 # ==========================================
+FINAL_PMA_PORT=$(grep PMA_PORT .env | cut -d '=' -f 2)
+FINAL_RMQ_MGMT=$(grep RMQ_MGMT_PORT .env | cut -d '=' -f 2)
+FINAL_MAILPIT=$(grep MAILPIT_UI_PORT .env | cut -d '=' -f 2)
+
 echo "🎉 BOOM! Setup Complete!"
 echo "🛒 Storefront: $BASE_URL"
-echo "🗄️  phpMyAdmin: http://localhost:8081"
-echo "🐇 RabbitMQ: http://localhost:15672"
-echo "📬 Mailpit: http://localhost:8025"
+echo "🗄️  phpMyAdmin: http://localhost:$FINAL_PMA_PORT"
+echo "🐇 RabbitMQ: http://localhost:$FINAL_RMQ_MGMT"
+echo "📬 Mailpit: http://localhost:$FINAL_MAILPIT"
