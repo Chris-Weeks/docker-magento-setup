@@ -120,8 +120,10 @@ Xdebug is pre-configured to communicate back to your host machine via port `9003
 
 1. In PhpStorm, ensure the "Listen for PHP Debug Connections" button (the little phone icon in the top right toolbar) is clicked and turned **green**.
 2. Open your WSL terminal and run the toggle script to turn Xdebug on:
-   ```bash ./toggle-xdebug.sh
+   ```bash
+   ./toggle-xdebug.sh
 3. Set a breakpoint in your code (e.g., pub/index.php).
 4. Refresh your browser. PhpStorm should immediately flash and pause execution at your breakpoint!
 
 (Note: Don't forget to run ./toggle-xdebug.sh again to turn it off when you are done debugging, as Xdebug slows down page load times significantly).
+
