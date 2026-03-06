@@ -14,6 +14,10 @@ curl -sS -o Dockerfile "$REPO_BASE_URL/Dockerfile"
 curl -sS -o toggle-xdebug.sh "$REPO_BASE_URL/toggle-xdebug.sh"
 chmod +x toggle-xdebug.sh
 
+# Grab the local host's User ID and Group ID
+LOCAL_UID=$(id -u)
+LOCAL_GID=$(id -g)
+
 # ==========================================
 # 🗣️ INTERACTIVE PROMPTS
 # ==========================================
@@ -45,6 +49,8 @@ if [ "$INSTALL_TYPE" == "1" ]; then
     ADMIN_PASS=${ADMIN_PASS:-AdminPassword123!}
 
     cat <<EOF > .env
+UID=$LOCAL_UID
+GID=$LOCAL_GID
 MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
 MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
 EOF
@@ -80,6 +86,8 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
     done
 
     cat <<EOF > .env
+UID=$LOCAL_UID
+GID=$LOCAL_GID
 GIT_REPO_URL=$GIT_REPO_URL
 MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY
 MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY
@@ -124,16 +132,16 @@ sleep 30
 # 📥 BASE MAGENTO INSTALLATION (Applies to both options)
 # ==========================================
 echo "🔑 Authenticating standard Magento Repo globally..."
-docker-compose exec -T web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
+docker-compose exec -T --user www-data web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
 if [ ! -f "magento-src/bin/magento" ]; then
     echo "📥 Downloading fresh base Magento 2.4.7-p8..."
-    docker-compose exec -T web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
+    docker-compose exec -T --user www-data web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
 fi
 
 if [ ! -f "magento-src/app/etc/env.php" ]; then
     echo "⚙️ Running base Magento setup:install..."
-    docker-compose exec -T web bin/magento setup:install \
+    docker-compose exec -T --user www-data web bin/magento setup:install \
         --base-url="$BASE_URL" \
         --db-host="db" \
         --db-name="magento" \
@@ -161,11 +169,9 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     git clone "$GIT_REPO_URL" ../magento-temp-repo
 
     echo "🔄 Merging custom repository over base install..."
-    # cp -a safely overwrites files and includes hidden directories like .git
     cp -a ../magento-temp-repo/. ./magento-src/
     rm -rf ../magento-temp-repo
 
-    # Loop through and authenticate all third-party vendors
     if [ "$VENDOR_COUNT" -gt 0 ]; then
         for (( i=1; i<=$VENDOR_COUNT; i++ )); do
             U_VAR="VENDOR_URL_$i"
@@ -177,29 +183,29 @@ if [ "$INSTALL_TYPE" == "2" ]; then
             V_PRIV="${!PRIV_VAR}"
             
             echo "🧩 Authenticating Third-Party Vendor ($V_URL)..."
-            docker-compose exec -T web composer config -g http-basic."$V_URL" "$V_PUB" "$V_PRIV"
+            docker-compose exec -T --user www-data web composer config -g http-basic."$V_URL" "$V_PUB" "$V_PRIV"
         done
     fi
 
     echo "📥 Installing custom Composer dependencies..."
-    docker-compose exec -T web composer install -d /var/www/html
+    docker-compose exec -T --user www-data web composer install -d /var/www/html
 
     echo "🚀 Running setup:upgrade to register custom modules..."
-    docker-compose exec -T web bin/magento setup:upgrade
+    docker-compose exec -T --user www-data web bin/magento setup:upgrade
 fi
 
 # ==========================================
 # ⚙️ FINAL CONFIGURATION (Applies to both options)
 # ==========================================
 echo "⚡ Linking Redis and RabbitMQ..."
-docker-compose exec -T web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
-docker-compose exec -T web bin/magento setup:config:set --page-cache=redis --page-cache-redis-server=redis --page-cache-redis-db=1 -n
-docker-compose exec -T web bin/magento setup:config:set --session-save=redis --session-save-redis-host=redis --session-save-redis-log-level=4 --session-save-redis-db=2 -n
-docker-compose exec -T web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
+docker-compose exec -T --user www-data web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
+docker-compose exec -T --user www-data web bin/magento setup:config:set --page-cache=redis --page-cache-redis-server=redis --page-cache-redis-db=1 -n
+docker-compose exec -T --user www-data web bin/magento setup:config:set --session-save=redis --session-save-redis-host=redis --session-save-redis-log-level=4 --session-save-redis-db=2 -n
+docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
 
 echo "🧹 Clearing Cache..."
-docker-compose exec -T web bin/magento cache:flush
-docker-compose exec -T web bash -c "chmod -R 777 var/ pub/static/ generated/ || true"
+docker-compose exec -T --user www-data web bin/magento cache:flush
+docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ generated/ || true"
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
@@ -211,10 +217,10 @@ if ! grep -q "$ALIAS_MARKER" ~/.bashrc; then
     cat << 'EOF' >> ~/.bashrc
 
 # Magento 2 Docker Aliases
-alias m="docker-compose exec web bin/magento"
-alias mc="docker-compose exec web composer"
-alias mcli="docker-compose exec web bash"
-alias mclean="docker-compose exec web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ generated/'"
+alias m="docker-compose exec --user www-data web bin/magento"
+alias mc="docker-compose exec --user www-data web composer"
+alias mcli="docker-compose exec --user www-data web bash"
+alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ generated/'"
 EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
 else
