@@ -77,3 +77,40 @@ Once the setup is complete, your local services are mapped to the following port
 * **RabbitMQ:** `http://localhost:15672` *(User: `guest` / Pass: `guest`)*
 * **Mailpit (Local Email Catcher):** `http://localhost:8025`
 
+---
+
+## 💻 Setting up PhpStorm for Docker Development
+
+To get the most out of PhpStorm (like code completion, syntax highlighting, and debugging), you need to tell it to use the PHP engine running *inside* your Docker container, rather than looking for one on your local machine.
+
+### 1. Open the Project Correctly
+Since the files live in WSL, you should open the project via the WSL file system.
+* Open PhpStorm.
+* Click **Open**.
+* Navigate to your WSL directory: `\\wsl$\Ubuntu\home\YOUR_USERNAME\Sites\magentocd\magento-src` (or open it directly from the WSL terminal by typing `phpstorm.exe .` inside the folder).
+
+### 2. Configure the Docker CLI Interpreter
+This allows PhpStorm to run PHP commands (like Code Sniffer or PHPUnit) using the container's environment.
+
+1. Go to **File > Settings > PHP**.
+2. Next to the **CLI Interpreter** dropdown, click the `...` button.
+3. Click the `+` icon at the top left and select **From Docker, Vagrant, VM, WSL, Remote...**
+4. Select **Docker Compose**.
+5. Set the **Server** to `Docker` (or set up a new Docker connection if prompted).
+6. Set the **Configuration file(s)** to your `docker-compose.yml` file.
+7. Set the **Service** to `web`.
+8. Click **OK**. PhpStorm will briefly scan the container and detect PHP 8.2 and Xdebug.
+
+### 3. Configure Path Mappings (Crucial for Xdebug)
+PhpStorm needs to know how the files on your Windows machine map to the files inside the Linux container.
+
+1. Go to **File > Settings > PHP > Servers**.
+2. Click the `+` icon to add a new server.
+3. **Name:** `magento.test` (or `localhost` depending on your Base URL setup).
+4. **Host:** `magento.test` (or `localhost`).
+5. **Port:** `8000`.
+6. Check the box that says **Use path mappings**.
+7. In the file tree below, find your local project root (`.../magentocd/magento-src`).
+8. In the column next to it (Absolute path on the server), type: `/var/www/html`.
+9. Click **Apply** and **OK**.
+
