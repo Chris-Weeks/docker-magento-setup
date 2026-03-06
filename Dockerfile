@@ -3,7 +3,7 @@ FROM php:8.2-apache
 # Install required system packages
 RUN apt-get update && apt-get install -y \
     libfreetype6-dev libjpeg62-turbo-dev libpng-dev libicu-dev \
-    libzip-dev libxslt1-dev git unzip wget nano
+    libzip-dev libxslt1-dev git unzip wget nano libsodium-dev libxml2-dev
 
 # Configure and install PHP extensions required by Magento 2.4.7
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
