@@ -2,7 +2,9 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     ports:
       - "8000:80"
     volumes:
@@ -12,38 +14,24 @@ services:
       - elasticsearch
       - redis
       - rabbitmq
-    networks:
-      - magento_net
-
-  cron:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./magento-src:/var/www/html
-    depends_on:
-      - db
-      - redis
-      - rabbitmq
-    # Run the background cron worker
-    command: bash -c "while true; do php bin/magento cron:run; sleep 60; done"
-    networks:
-      - magento_net
+    environment:
+      - XDEBUG_MODE=debug
+      - XDEBUG_CONFIG=client_host=host.docker.internal client_port=9003
 
   db:
-    image: mariadb:10.11
+    image: mariadb:10.6
+    ports:
+      - "3306:3306"
     environment:
-      MARIADB_ROOT_PASSWORD: rootpassword
-      MARIADB_DATABASE: magento
-      MARIADB_USER: magento
-      MARIADB_PASSWORD: magentopassword
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: magento
+      MYSQL_USER: magento
+      MYSQL_PASSWORD: magentopassword
     volumes:
       - db-data:/var/lib/mysql
-    networks:
-      - magento_net
 
   elasticsearch:
-    image: elasticsearch:7.17.18
+    image: elasticsearch:7.17.9
     environment:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
@@ -51,38 +39,19 @@ services:
       - "9200:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
-    networks:
-      - magento_net
 
   redis:
     image: redis:7.0-alpine
     ports:
       - "6379:6379"
-    networks:
-      - magento_net
 
   rabbitmq:
-    image: rabbitmq:3.12-management-alpine
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+    image: rabbitmq:3.11-management-alpine
     ports:
-      - "15672:15672"
       - "5672:5672"
+      - "15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
-    networks:
-      - magento_net
-
-  mailpit:
-    image: axllent/mailpit
-    ports:
-      - "8025:8025"
-      - "1025:1025"
-    environment:
-      MP_MAX_MESSAGES: 500
-    networks:
-      - magento_net
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
@@ -92,16 +61,14 @@ services:
       PMA_HOST: db
       PMA_USER: root
       PMA_PASSWORD: rootpassword
-    depends_on:
-      - db
-    networks:
-      - magento_net
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
 volumes:
   db-data:
   es-data:
   rabbitmq-data:
-
-networks:
-  magento_net:
-    driver: bridge
