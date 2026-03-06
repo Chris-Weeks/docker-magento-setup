@@ -1,0 +1,107 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80" # Magento accessible at port 8000
+    volumes:
+      - ./magento-src:/var/www/html
+    depends_on:
+      - db
+      - elasticsearch
+      - redis
+      - rabbitmq
+    networks:
+      - magento_net
+
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./magento-src:/var/www/html
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    command: >
+      bash -c "while true; do php bin/magento cron:run; sleep 60; done"
+    networks:
+      - magento_net
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: magento
+      MARIADB_USER: magento
+      MARIADB_PASSWORD: magentopassword
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - magento_net
+
+  elasticsearch:
+    image: elasticsearch:7.17.18
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - magento_net
+
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - magento_net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - magento_net
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      MP_MAX_MESSAGES: 500
+    networks:
+      - magento_net
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8081:80" # phpMyAdmin moved to 8081 to avoid conflicts
+    environment:
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword
+    depends_on:
+      - db
+    networks:
+      - magento_net
+
+volumes:
+  db-data:
+  es-data:
+  rabbitmq-data:
+
+networks:
+  magento_net:
+    driver: bridge
