@@ -30,7 +30,7 @@ Do **not** run this in Windows Command Prompt or PowerShell.
 Open your **Ubuntu (WSL)** terminal and paste this single command:
 
 ```bash
-mkdir -p ~/Sites/magentocd && cd $_ && bash -c "$(curl -fsSL [https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh](https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh))"
+mkdir -p ~/Sites/magentocd && cd $_ && bash -c "$(curl -fsSL https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh)"
 ```
 
 ### What this script does automatically:
@@ -76,3 +76,4 @@ Once the setup is complete, your local services are mapped to the following port
 * **phpMyAdmin:** `http://localhost:8081` *(User: `root` / Pass: `rootpassword`)*
 * **RabbitMQ:** `http://localhost:15672` *(User: `guest` / Pass: `guest`)*
 * **Mailpit (Local Email Catcher):** `http://localhost:8025`
+
