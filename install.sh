@@ -14,11 +14,8 @@ curl -sS -o Dockerfile "$REPO_BASE_URL/Dockerfile"
 curl -sS -o toggle-xdebug.sh "$REPO_BASE_URL/toggle-xdebug.sh"
 chmod +x toggle-xdebug.sh
 
-# Grab the local host's User ID and Group ID
 LOCAL_UID=$(id -u)
 LOCAL_GID=$(id -g)
-
-# Start building the .env file
 echo "UID=$LOCAL_UID" > .env
 echo "GID=$LOCAL_GID" >> .env
 
@@ -71,7 +68,7 @@ echo "MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY" >> .env
 echo "MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY" >> .env
 
 # ==========================================
-# 🔍 PRE-FLIGHT PORT DETECTION
+# 🔍 PRE-FLIGHT PORT DETECTION (WSL + Windows)
 # ==========================================
 echo ""
 echo "--- 🔍 PORT AVAILABILITY CHECK ---"
@@ -84,13 +81,17 @@ check_port() {
     while true; do
         PORT_IN_USE=false
         
-        # 1. Check WSL's native Linux networking layer
-        if (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; then
+        # 1. Check if the port was ALREADY assigned to another service in this exact script run
+        if grep -q "=$port$" .env 2>/dev/null; then
             PORT_IN_USE=true
         fi
         
-        # 2. Cross the bridge and check the Windows Host networking layer
-        # (This uses WSL Interop to run the Windows netstat command natively)
+        # 2. Check WSL's Linux network
+        if [ "$PORT_IN_USE" = false ] && (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; then
+            PORT_IN_USE=true
+        fi
+        
+        # 3. Check Windows Host network via interop
         if [ "$PORT_IN_USE" = false ] && command -v netstat.exe >/dev/null; then
             if netstat.exe -an | grep -q -E ":$port\s+.*LISTENING"; then
                 PORT_IN_USE=true
@@ -98,9 +99,15 @@ check_port() {
         fi
 
         if [ "$PORT_IN_USE" = true ]; then
-            echo "⚠️  Port $port is already in use by Windows or another container (needed for $service)."
+            echo "⚠️  Port $port is already in use or claimed by another container."
             read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
-            port=$new_port
+            
+            # Simple validation to ensure they enter a valid number
+            if [[ "$new_port" =~ ^[0-9]+$ ]]; then
+                port=$new_port
+            else
+                echo "❌ Invalid port number. Please enter a number."
+            fi
         else
             break
         fi
@@ -120,7 +127,6 @@ check_port 8081 "phpMyAdmin" "PMA_PORT"
 check_port 8025 "Mailpit UI" "MAILPIT_UI_PORT"
 check_port 1025 "Mailpit SMTP" "MAILPIT_SMTP_PORT"
 
-# Grab the web port from the .env file to help with the Base URL prompt
 FINAL_WEB_PORT=$(grep WEB_PORT .env | cut -d '=' -f 2)
 SUGGESTED_URL="http://magento.test/"
 if [ "$FINAL_WEB_PORT" != "80" ]; then
@@ -134,6 +140,22 @@ echo ""
 echo "--- 🌍 GENERAL SITE SETTINGS ---"
 read -p "Base URL [$SUGGESTED_URL]: " BASE_URL
 BASE_URL=${BASE_URL:-$SUGGESTED_URL}
+
+# 🌐 AUTOMATIC WINDOWS HOSTS FILE INJECTION
+DOMAIN=$(echo "$BASE_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||' -e 's|:.*$||')
+if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
+    WINDOWS_HOSTS="/mnt/c/Windows/System32/drivers/etc/hosts"
+    if ! grep -q "$DOMAIN" "$WINDOWS_HOSTS" 2>/dev/null; then
+        echo ""
+        echo "🌐 Mapping $DOMAIN to localhost..."
+        echo "⚠️  Look at your taskbar! A Windows Administrator prompt (UAC) will pop up."
+        echo "   Please click 'Yes' to automatically add the domain to your Windows hosts file."
+        powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-WindowStyle Hidden -Command \"Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value \`\"\`n127.0.0.1\`t$DOMAIN\`\"\"'"
+        sleep 2
+    else
+        echo "✅ Domain $DOMAIN is already routed in your Windows hosts file."
+    fi
+fi
 
 read -p "Admin First Name [Dev]: " ADMIN_FIRST
 ADMIN_FIRST=${ADMIN_FIRST:-Dev}
@@ -215,11 +237,9 @@ if [ "$INSTALL_TYPE" == "2" ]; then
             U_VAR="VENDOR_URL_$i"
             PUB_VAR="VENDOR_PUB_KEY_$i"
             PRIV_VAR="VENDOR_PRIV_KEY_$i"
-            
             V_URL="${!U_VAR}"
             V_PUB="${!PUB_VAR}"
             V_PRIV="${!PRIV_VAR}"
-            
             echo "🧩 Authenticating Third-Party Vendor ($V_URL)..."
             docker-compose exec -T --user www-data web composer config -g http-basic."$V_URL" "$V_PUB" "$V_PRIV"
         done
@@ -230,6 +250,15 @@ if [ "$INSTALL_TYPE" == "2" ]; then
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user www-data web bin/magento setup:upgrade
+
+    echo "🛠️ Setting Developer Mode..."
+    docker-compose exec -T --user www-data web bin/magento deploy:mode:set developer
+
+    echo "🧱 Compiling Dependency Injection..."
+    docker-compose exec -T --user www-data web bin/magento setup:di:compile
+
+    echo "🎨 Deploying Static Content for $MAGENTO_LANG..."
+    docker-compose exec -T --user www-data web bin/magento setup:static-content:deploy -f "$MAGENTO_LANG" en_US
 fi
 
 # ==========================================
@@ -249,9 +278,10 @@ docker-compose exec -T --user www-data web bin/magento setup:config:set --page-c
 docker-compose exec -T --user www-data web bin/magento setup:config:set --session-save=redis --session-save-redis-host=redis --session-save-redis-log-level=4 --session-save-redis-db=2 -n
 docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
 
-echo "🧹 Clearing Cache..."
+echo "🧹 Locking Permissions & Clearing Cache..."
+docker-compose exec -T --user root web chown -R www-data:www-data var/ pub/static/ pub/media/ generated/ || true
+docker-compose exec -T --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/ || true
 docker-compose exec -T --user www-data web bin/magento cache:flush
-docker-compose exec -T --user www-data web bash -c "chmod -R 777 var/ pub/static/ pub/media/ generated/ || true"
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
@@ -268,7 +298,7 @@ alias mc="docker-compose exec --user www-data web composer"
 alias mcli="docker-compose exec --user www-data web bash"
 alias mg="docker-compose exec --user www-data web grunt"
 alias mnpm="docker-compose exec --user www-data web npm"
-alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush && chmod -R 777 var/ pub/static/ pub/media/ generated/'"
+alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush' && docker-compose exec --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/"
 EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
 else
