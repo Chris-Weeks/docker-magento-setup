@@ -81,11 +81,29 @@ check_port() {
     local service=$2
     local env_var=$3
 
-    # Check if port is in use using bash network sockets
-    while (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; do
-        echo "⚠️  Port $port is already in use (needed for $service)."
-        read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
-        port=$new_port
+    while true; do
+        PORT_IN_USE=false
+        
+        # 1. Check WSL's native Linux networking layer
+        if (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; then
+            PORT_IN_USE=true
+        fi
+        
+        # 2. Cross the bridge and check the Windows Host networking layer
+        # (This uses WSL Interop to run the Windows netstat command natively)
+        if [ "$PORT_IN_USE" = false ] && command -v netstat.exe >/dev/null; then
+            if netstat.exe -an | grep -q -E ":$port\s+.*LISTENING"; then
+                PORT_IN_USE=true
+            fi
+        fi
+
+        if [ "$PORT_IN_USE" = true ]; then
+            echo "⚠️  Port $port is already in use by Windows or another container (needed for $service)."
+            read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
+            port=$new_port
+        else
+            break
+        fi
     done
     
     echo "$env_var=$port" >> .env
