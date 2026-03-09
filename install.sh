@@ -260,6 +260,11 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     echo "📥 Installing custom Composer dependencies..."
     docker-compose exec --user www-data web composer install -d /var/www/html
 
+    echo "🛡️ Disabling production-specific caching modules for local dev..."
+    # Disable LiteMage if it exists
+    docker-compose exec --user www-data web bin/magento module:disable Litespeed_Litemage || true
+    # (You can add others here in the future if needed, like Fastly_Cdn)
+
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user www-data web bin/magento setup:upgrade
 fi
