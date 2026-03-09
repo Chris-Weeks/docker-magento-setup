@@ -32,7 +32,7 @@ Do **not** run this in Windows Command Prompt or PowerShell.
 Open your **Ubuntu (WSL)** terminal and paste this single command:
 
 ```bash
-mkdir -p ~/Sites/magentocd && cd $_ && bash -c "$(curl -fsSL https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh)"
+mkdir -p ~/sites/magentocd && cd $_ && bash -c "$(curl -fsSL https://raw.githubusercontent.com/Chris-Weeks/docker-magento-setup/main/install.sh)"
 ```
 
 ### The Setup Wizard
@@ -139,4 +139,5 @@ Xdebug is pre-configured to communicate back to your host machine via port `9003
 4. Refresh your browser. PhpStorm should immediately flash and pause execution at your breakpoint!
 
 *(Note: Don't forget to run `./toggle-xdebug.sh` again to turn it off when you are done debugging, as Xdebug slows down page load times significantly).*
+
 
