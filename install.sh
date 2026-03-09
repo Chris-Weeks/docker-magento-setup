@@ -49,6 +49,10 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
     while true; do
         read -p "Vendor Composer URL (e.g., composer.amasty.com) [Blank to exit]: " V_URL
         if [ -z "$V_URL" ]; then break; fi
+        
+        # 🧹 AUTOMATIC CLEANUP: Strip http://, https://, and trailing slashes so Composer doesn't break
+        V_URL=$(echo "$V_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+
         read -p "Vendor Username / Public Key: " V_PUB
         read -p "Vendor Password / Private Key: " V_PRIV
 
@@ -250,7 +254,7 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     fi
 
     echo "📥 Installing custom Composer dependencies..."
-    docker-compose exec -T --user www-data web composer install -d /var/www/html
+    docker-compose exec --user www-data web composer install -d /var/www/html
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user www-data web bin/magento setup:upgrade
