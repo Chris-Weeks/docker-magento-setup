@@ -195,13 +195,17 @@ sleep 30
 # ==========================================
 # 📥 MAGENTO BASE INSTALLATION
 # ==========================================
-echo "🔑 Authenticating standard Magento Repo globally..."
+echo "🔑 Authenticating standard Magento Repo globally (required for create-project)..."
 docker-compose exec -T --user www-data web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
 if [ ! -f "magento-src/bin/magento" ]; then
     echo "📥 Downloading fresh base Magento 2.4.7-p8..."
     docker-compose exec -T --user www-data web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
 fi
+
+# Lock the credentials into the physical project directory so they persist and apply to all users
+echo "🔐 Locking Magento keys into project auth.json..."
+docker-compose exec -T --user www-data web composer config http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
 if [ ! -f "magento-src/app/etc/env.php" ]; then
     echo "⚙️ Running base Magento setup:install..."
@@ -248,8 +252,8 @@ if [ "$INSTALL_TYPE" == "2" ]; then
             V_URL="${!U_VAR}"
             V_PUB="${!PUB_VAR}"
             V_PRIV="${!PRIV_VAR}"
-            echo "🧩 Authenticating Third-Party Vendor ($V_URL)..."
-            docker-compose exec -T --user www-data web composer config -g http-basic."$V_URL" "$V_PUB" "$V_PRIV"
+            echo "🧩 Locking Third-Party Vendor ($V_URL) into project auth.json..."
+            docker-compose exec -T --user www-data web composer config http-basic."$V_URL" "$V_PUB" "$V_PRIV"
         done
     fi
 
@@ -290,8 +294,8 @@ docker-compose exec -T --user www-data web bin/magento setup:config:set --sessio
 docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
 
 echo "🧹 Locking Permissions & Clearing Cache..."
-docker-compose exec -T --user root web chown -R www-data:www-data var/ pub/static/ pub/media/ generated/ || true
-docker-compose exec -T --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/ || true
+docker-compose exec -T --user root web chown -R www-data:www-data var/ pub/static/ pub/media/ generated/ auth.json || true
+docker-compose exec -T --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/ auth.json || true
 docker-compose exec -T --user www-data web bin/magento cache:flush
 
 # ==========================================
