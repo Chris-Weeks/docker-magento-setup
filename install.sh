@@ -53,6 +53,11 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
         read -p "Vendor Password / Private Key: " V_PRIV
 
         VENDOR_COUNT=$((VENDOR_COUNT+1))
+        
+        export VENDOR_URL_${VENDOR_COUNT}="$V_URL"
+        export VENDOR_PUB_KEY_${VENDOR_COUNT}="$V_PUB"
+        export VENDOR_PRIV_KEY_${VENDOR_COUNT}="$V_PRIV"
+        
         echo "VENDOR_URL_$VENDOR_COUNT=$V_URL" >> .env
         echo "VENDOR_PUB_KEY_$VENDOR_COUNT=$V_PUB" >> .env
         echo "VENDOR_PRIV_KEY_$VENDOR_COUNT=$V_PRIV" >> .env
@@ -102,7 +107,6 @@ check_port() {
             echo "⚠️  Port $port is already in use or claimed by another container (needed for $service)."
             read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
             
-            # Simple validation to ensure they enter a valid number
             if [[ "$new_port" =~ ^[0-9]+$ ]]; then
                 port=$new_port
             else
@@ -150,7 +154,6 @@ if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
         echo "🌐 Mapping $DOMAIN to localhost..."
         echo "⚠️  Look at your taskbar! A Windows Administrator prompt (UAC) will pop up."
         echo "   Please click 'Yes' to automatically add the domain to your Windows hosts file."
-        # Fire a hidden elevated PowerShell command from WSL to edit the Windows file cleanly
         powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-WindowStyle Hidden -Command Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value \"127.0.0.1 $DOMAIN\"'"
         sleep 2
     else
