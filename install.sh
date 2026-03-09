@@ -68,7 +68,7 @@ echo "MAGENTO_PUB_KEY=$MAGENTO_PUB_KEY" >> .env
 echo "MAGENTO_PRIV_KEY=$MAGENTO_PRIV_KEY" >> .env
 
 # ==========================================
-# 🔍 PRE-FLIGHT PORT DETECTION (WSL + Windows)
+# 🔍 PRE-FLIGHT PORT DETECTION (Self-Aware + WSL + Windows)
 # ==========================================
 echo ""
 echo "--- 🔍 PORT AVAILABILITY CHECK ---"
@@ -81,7 +81,7 @@ check_port() {
     while true; do
         PORT_IN_USE=false
         
-        # 1. Check if the port was ALREADY assigned to another service in this exact script run
+        # 1. Check if the port was ALREADY assigned in this exact script run
         if grep -q "=$port$" .env 2>/dev/null; then
             PORT_IN_USE=true
         fi
@@ -99,7 +99,7 @@ check_port() {
         fi
 
         if [ "$PORT_IN_USE" = true ]; then
-            echo "⚠️  Port $port is already in use or claimed by another container."
+            echo "⚠️  Port $port is already in use or claimed by another container (needed for $service)."
             read -p "Enter an alternative port (e.g., $((port + 1))): " new_port
             
             # Simple validation to ensure they enter a valid number
@@ -150,7 +150,8 @@ if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
         echo "🌐 Mapping $DOMAIN to localhost..."
         echo "⚠️  Look at your taskbar! A Windows Administrator prompt (UAC) will pop up."
         echo "   Please click 'Yes' to automatically add the domain to your Windows hosts file."
-        powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-WindowStyle Hidden -Command \"Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value \`\"\`n127.0.0.1\`t$DOMAIN\`\"\"'"
+        # Fire a hidden elevated PowerShell command from WSL to edit the Windows file cleanly
+        powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-WindowStyle Hidden -Command Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value \"127.0.0.1 $DOMAIN\"'"
         sleep 2
     else
         echo "✅ Domain $DOMAIN is already routed in your Windows hosts file."
@@ -185,7 +186,7 @@ echo "⏳ Waiting 30s for MariaDB to initialize..."
 sleep 30
 
 # ==========================================
-# 📥 MAGENTO INSTALLATION
+# 📥 MAGENTO BASE INSTALLATION
 # ==========================================
 echo "🔑 Authenticating standard Magento Repo globally..."
 docker-compose exec -T --user www-data web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
@@ -218,7 +219,7 @@ if [ ! -f "magento-src/app/etc/env.php" ]; then
 fi
 
 # ==========================================
-# 🔄 MERGE & UPGRADE EXISTING REPO
+# 🔄 OPTION 2: MERGE & UPGRADE EXISTING REPO
 # ==========================================
 if [ "$INSTALL_TYPE" == "2" ]; then
     echo "📦 Pulling custom repository into a temporary folder..."
@@ -250,16 +251,19 @@ if [ "$INSTALL_TYPE" == "2" ]; then
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user www-data web bin/magento setup:upgrade
-
-    echo "🛠️ Setting Developer Mode..."
-    docker-compose exec -T --user www-data web bin/magento deploy:mode:set developer
-
-    echo "🧱 Compiling Dependency Injection..."
-    docker-compose exec -T --user www-data web bin/magento setup:di:compile
-
-    echo "🎨 Deploying Static Content for $MAGENTO_LANG..."
-    docker-compose exec -T --user www-data web bin/magento setup:static-content:deploy -f "$MAGENTO_LANG" en_US
 fi
+
+# ==========================================
+# 🛠️ MAGENTO COMPILATION (Applies to BOTH options)
+# ==========================================
+echo "🛠️ Setting Developer Mode..."
+docker-compose exec -T --user www-data web bin/magento deploy:mode:set developer
+
+echo "🧱 Compiling Dependency Injection..."
+docker-compose exec -T --user www-data web bin/magento setup:di:compile
+
+echo "🎨 Deploying Static Content for $MAGENTO_LANG..."
+docker-compose exec -T --user www-data web bin/magento setup:static-content:deploy -f "$MAGENTO_LANG" en_US
 
 # ==========================================
 # 🎨 FRONTEND TOOLING (NODE & GRUNT)
