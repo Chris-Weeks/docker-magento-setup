@@ -29,7 +29,7 @@ services:
     depends_on:
       - db
       - redis
-    user: "www-data"
+    user: "nobody" # <--- Change this from "www-data"
     command: bash -c "while true; do php bin/magento cron:run; sleep 60; done"
 
   db:
