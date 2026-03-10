@@ -345,19 +345,28 @@ else
 fi
 
 # ==========================================
-# ⚡ LITEMAGE OPT-IN
+# ⚡ QUARANTINED MODULES OPT-IN
 # ==========================================
 if [ "$INSTALL_TYPE" == "2" ]; then
     echo ""
-    read -p "🚀 Would you like to enable the LiteSpeed (LiteMage) caching module? (y/n): " ENABLE_LITEMAGE
-    if [[ "$ENABLE_LITEMAGE" =~ ^[Yy]$ ]]; then
-        echo "⚡ Enabling LiteMage..."
-        docker-compose exec --user nobody web bin/magento module:enable Litespeed_Litemage
-        docker-compose exec --user nobody web bin/magento setup:upgrade
-        docker-compose exec --user nobody web bin/magento cache:flush
-        echo "✅ LiteMage successfully enabled!"
+    read -p "🚀 Would you like to restore and enable the quarantined modules (LiteMage, Feefo, CookieConsent)? (y/n): " ENABLE_QUARANTINE
+    if [[ "$ENABLE_QUARANTINE" =~ ^[Yy]$ ]]; then
+        echo "⚡ Restoring LiteMage from /tmp..."
+        docker-compose exec -T --user root web bash -c "mv /tmp/Litespeed_backup app/code/Litespeed 2>/dev/null || true"
+        
+        echo "⚡ Enabling modules in Magento..."
+        docker-compose exec -T --user nobody web bin/magento module:enable Litespeed_Litemage Feefo_Reviews Phpro_CookieConsent
+        
+        echo "⚙️ Running final setup:upgrade to sync restored modules..."
+        docker-compose exec -T --user nobody web bin/magento setup:upgrade
+        
+        echo "🧹 Fixing permissions & flushing cache..."
+        docker-compose exec -T --user root web bash -c "chmod -R 777 var/ generated/ pub/static/ app/etc/"
+        docker-compose exec -T --user nobody web bin/magento cache:flush
+        
+        echo "✅ Modules successfully restored and enabled!"
     else
-        echo "⏸️ LiteMage remains disabled for standard local development."
+        echo "⏸️ Modules remain safely quarantined for a stable local development environment."
     fi
 fi
 
