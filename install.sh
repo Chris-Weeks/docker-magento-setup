@@ -264,7 +264,7 @@ if [ "$INSTALL_TYPE" == "2" ]; then
             docker-compose exec -T --user nobody web composer config http-basic."$V_URL" "$V_PUB" "$V_PRIV"
         done
     fi
-
+    
     echo "📥 Installing custom Composer dependencies..."
     # Note: Deliberately removing -T so interactive prompts for missing credentials work safely
     docker-compose exec --user nobody web composer install -d /var/www/html
@@ -273,17 +273,18 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     chmod -R 777 ./magento-src/app/etc 2>/dev/null || true
     chmod 644 ./magento-src/auth.json 2>/dev/null || true
 
-    echo "🧹 Wiping corrupted cache FIRST so the CLI can boot safely..."
-    docker-compose exec -T --user root web bash -c "rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/*"
-    docker-compose exec -T --user root web bash -c "mkdir -p generated/code generated/metadata var/cache var/page_cache var/view_preprocessed && chmod -R 777 generated var pub/static app/etc"
-
     echo "🛡️ Quarantining troublesome modules to protect the build..."
     # 1. LiteMage: Physical move and manual config scrub so it doesn't ghost crash the CLI
     docker-compose exec -T --user root web bash -c "mv app/code/Litespeed /tmp/Litespeed_backup 2>/dev/null || true"
     docker-compose exec -T --user root web sed -i '/Litespeed_Litemage/d' app/etc/config.php 2>/dev/null || true
     
-    # 2. Feefo & Phpro: Now that the CLI is healthy, disable them safely
-    docker-compose exec -T --user nobody web bin/magento module:disable Feefo_Reviews Phpro_CookieConsent --clear-static-content
+    # 2. Feefo & Phpro: Forcefully disable them in the config file, bypassing the fragile CLI
+    docker-compose exec -T --user root web sed -i "s/'Feefo_Reviews' => 1/'Feefo_Reviews' => 0/g" app/etc/config.php 2>/dev/null || true
+    docker-compose exec -T --user root web sed -i "s/'Phpro_CookieConsent' => 1/'Phpro_CookieConsent' => 0/g" app/etc/config.php 2>/dev/null || true
+
+    echo "🧹 Wiping corrupted cache so setup:upgrade boots cleanly..."
+    docker-compose exec -T --user root web bash -c "rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/*"
+    docker-compose exec -T --user root web bash -c "mkdir -p generated/code generated/metadata var/cache var/page_cache var/view_preprocessed && chmod -R 777 generated var pub/static app/etc"
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user nobody web bin/magento setup:upgrade
