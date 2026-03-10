@@ -21,9 +21,9 @@ COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 # We use the -o flag to allow non-unique IDs in case the base image already uses 1000
 RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
 
-# Create Composer Home Second: Give the 'nobody' user a valid home directory
-ENV COMPOSER_HOME=/tmp/composer
-RUN mkdir -p /tmp/composer && chown -R nobody:nogroup /tmp/composer
+# Create Composer Home (Outside of /tmp to avoid Docker Volume wipes)
+ENV COMPOSER_HOME=/var/composer_home
+RUN mkdir -p /var/composer_home && chown -R nobody:nogroup /var/composer_home && chmod 777 /var/composer_home
 
 # 3. Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
 # We use wildcards (*) so it works whether LiteSpeed named it 'Example', 'localhost', '.conf', or '.xml'
