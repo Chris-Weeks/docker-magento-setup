@@ -199,20 +199,20 @@ sleep 30
 # 📥 MAGENTO BASE INSTALLATION
 # ==========================================
 echo "🔑 Authenticating standard Magento Repo globally (required for create-project)..."
-docker-compose exec -T --user www-data web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
+docker-compose exec -T --user nobody web composer config -g http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
 if [ ! -f "magento-src/bin/magento" ]; then
     echo "📥 Downloading fresh base Magento 2.4.7-p8..."
-    docker-compose exec -T --user www-data web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
+    docker-compose exec -T --user nobody web composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.4.7-p8 .
 fi
 
 # Lock the credentials into the physical project directory so they persist and apply to all users
 echo "🔐 Locking Magento keys into project auth.json..."
-docker-compose exec -T --user www-data web composer config http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
+docker-compose exec -T --user nobody web composer config http-basic.repo.magento.com "$MAGENTO_PUB_KEY" "$MAGENTO_PRIV_KEY"
 
 if [ ! -f "magento-src/app/etc/env.php" ]; then
     echo "⚙️ Running base Magento setup:install..."
-    docker-compose exec -T --user www-data web bin/magento setup:install \
+    docker-compose exec -T --user nobody web bin/magento setup:install \
         --base-url="$BASE_URL" \
         --db-host="db" \
         --db-name="magento" \
@@ -256,54 +256,54 @@ if [ "$INSTALL_TYPE" == "2" ]; then
             V_PUB="${!PUB_VAR}"
             V_PRIV="${!PRIV_VAR}"
             echo "🧩 Locking Third-Party Vendor ($V_URL) into project auth.json..."
-            docker-compose exec -T --user www-data web composer config http-basic."$V_URL" "$V_PUB" "$V_PRIV"
+            docker-compose exec -T --user nobody web composer config http-basic."$V_URL" "$V_PUB" "$V_PRIV"
         done
     fi
 
     echo "📥 Installing custom Composer dependencies..."
     # Note: Deliberately removing -T so interactive prompts for missing credentials work safely
-    docker-compose exec --user www-data web composer install -d /var/www/html
+    docker-compose exec --user nobody web composer install -d /var/www/html
 
     echo "🛡️ Temporarily disabling LiteMage for initial database compilation..."
-    docker-compose exec -T --user www-data web bin/magento module:disable Litespeed_Litemage || true
+    docker-compose exec -T --user nobody web bin/magento module:disable Litespeed_Litemage || true
 
     echo "🚀 Running setup:upgrade to register custom modules..."
-    docker-compose exec -T --user www-data web bin/magento setup:upgrade
+    docker-compose exec -T --user nobody web bin/magento setup:upgrade
 fi
 
 # ==========================================
 # 🛠️ MAGENTO COMPILATION (Applies to BOTH options)
 # ==========================================
 echo "🛠️ Setting Developer Mode..."
-docker-compose exec -T --user www-data web bin/magento deploy:mode:set developer
+docker-compose exec -T --user nobody web bin/magento deploy:mode:set developer
 
 echo "🧱 Compiling Dependency Injection..."
-docker-compose exec -T --user www-data web bin/magento setup:di:compile
+docker-compose exec -T --user nobody web bin/magento setup:di:compile
 
 echo "🎨 Deploying Static Content for $MAGENTO_LANG..."
-docker-compose exec -T --user www-data web bin/magento setup:static-content:deploy -f "$MAGENTO_LANG" en_US
+docker-compose exec -T --user nobody web bin/magento setup:static-content:deploy -f "$MAGENTO_LANG" en_US
 
 # ==========================================
 # 🎨 FRONTEND TOOLING (NODE & GRUNT)
 # ==========================================
 echo "🎨 Setting up Node.js & Grunt for frontend development..."
-docker-compose exec -T --user www-data web bash -c "if [ ! -f package.json ]; then cp package.json.sample package.json; fi"
-docker-compose exec -T --user www-data web bash -c "if [ ! -f Gruntfile.js ]; then cp Gruntfile.js.sample Gruntfile.js; fi"
-docker-compose exec -T --user www-data web npm install
+docker-compose exec -T --user nobody web bash -c "if [ ! -f package.json ]; then cp package.json.sample package.json; fi"
+docker-compose exec -T --user nobody web bash -c "if [ ! -f Gruntfile.js ]; then cp Gruntfile.js.sample Gruntfile.js; fi"
+docker-compose exec -T --user nobody web npm install
 
 # ==========================================
 # ⚙️ FINAL CONFIGURATION
 # ==========================================
 echo "⚡ Linking Redis and RabbitMQ..."
-docker-compose exec -T --user www-data web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
-docker-compose exec -T --user www-data web bin/magento setup:config:set --page-cache=redis --page-cache-redis-server=redis --page-cache-redis-db=1 -n
-docker-compose exec -T --user www-data web bin/magento setup:config:set --session-save=redis --session-save-redis-host=redis --session-save-redis-log-level=4 --session-save-redis-db=2 -n
-docker-compose exec -T --user www-data web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
+docker-compose exec -T --user nobody web bin/magento setup:config:set --cache-backend=redis --cache-backend-redis-server=redis --cache-backend-redis-db=0 -n
+docker-compose exec -T --user nobody web bin/magento setup:config:set --page-cache=redis --page-cache-redis-server=redis --page-cache-redis-db=1 -n
+docker-compose exec -T --user nobody web bin/magento setup:config:set --session-save=redis --session-save-redis-host=redis --session-save-redis-log-level=4 --session-save-redis-db=2 -n
+docker-compose exec -T --user nobody web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
 
 echo "🧹 Locking Permissions & Clearing Cache..."
 docker-compose exec -T --user root web chown -R www-data:www-data var/ pub/static/ pub/media/ generated/ auth.json || true
 docker-compose exec -T --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/ auth.json || true
-docker-compose exec -T --user www-data web bin/magento cache:flush
+docker-compose exec -T --user nobody web bin/magento cache:flush
 
 # ==========================================
 # 🛠️ DEVELOPER ALIAS SETUP
@@ -315,12 +315,12 @@ if ! grep -q "$ALIAS_MARKER" ~/.bashrc; then
     cat << 'EOF' >> ~/.bashrc
 
 # Magento 2 Docker Aliases
-alias m="docker-compose exec --user www-data web bin/magento"
-alias mc="docker-compose exec --user www-data web composer"
-alias mcli="docker-compose exec --user www-data web bash"
-alias mg="docker-compose exec --user www-data web grunt"
-alias mnpm="docker-compose exec --user www-data web npm"
-alias mclean="docker-compose exec --user www-data web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush' && docker-compose exec --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/"
+alias m="docker-compose exec --user nobody web bin/magento"
+alias mc="docker-compose exec --user nobody web composer"
+alias mcli="docker-compose exec --user nobody web bash"
+alias mg="docker-compose exec --user nobody web grunt"
+alias mnpm="docker-compose exec --user nobody web npm"
+alias mclean="docker-compose exec --user nobody web bash -c 'rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/* pub/static/frontend/* pub/static/adminhtml/* && bin/magento cache:flush' && docker-compose exec --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/"
 EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
 else
@@ -335,9 +335,9 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     read -p "🚀 Would you like to enable the LiteSpeed (LiteMage) caching module? (y/n): " ENABLE_LITEMAGE
     if [[ "$ENABLE_LITEMAGE" =~ ^[Yy]$ ]]; then
         echo "⚡ Enabling LiteMage..."
-        docker-compose exec --user www-data web bin/magento module:enable Litespeed_Litemage
-        docker-compose exec --user www-data web bin/magento setup:upgrade
-        docker-compose exec --user www-data web bin/magento cache:flush
+        docker-compose exec --user nobody web bin/magento module:enable Litespeed_Litemage
+        docker-compose exec --user nobody web bin/magento setup:upgrade
+        docker-compose exec --user nobody web bin/magento cache:flush
         echo "✅ LiteMage successfully enabled!"
     else
         echo "⏸️ LiteMage remains disabled for standard local development."
