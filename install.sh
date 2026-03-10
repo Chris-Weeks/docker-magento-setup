@@ -358,6 +358,7 @@ FINAL_MAILPIT=$(grep MAILPIT_UI_PORT .env | cut -d '=' -f 2)
 
 echo "🎉 BOOM! Setup Complete!"
 echo "🛒 Storefront: $BASE_URL"
-echo "🗄️  phpMyAdmin: http://localhost:$FINAL_PMA_PORT"
+echo "🗄️ phpMyAdmin: http://localhost:$FINAL_PMA_PORT"
 echo "🐇 RabbitMQ: http://localhost:$FINAL_RMQ_MGMT"
 echo "📬 Mailpit: http://localhost:$FINAL_MAILPIT"
+echo "⚙️ LiteSpeed Admin: https://localhost:7080"
