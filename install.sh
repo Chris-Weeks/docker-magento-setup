@@ -273,16 +273,17 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     chmod -R 777 ./magento-src/app/etc 2>/dev/null || true
     chmod 644 ./magento-src/auth.json 2>/dev/null || true
 
-    echo "🛡️ Quarantining troublesome modules to protect the build..."
-    # 1. LiteMage: Physical move because PHP 8.2 strictness crashes the DI compiler
-    docker-compose exec -T --user root web bash -c "mv app/code/Litespeed /tmp/Litespeed_backup 2>/dev/null || true"
-    
-    # 2. Feefo & Phpro: Disable via CLI to prevent their broken data patches from crashing the database sync
-    docker-compose exec -T --user nobody web bin/magento module:disable Feefo_Reviews Phpro_CookieConsent --clear-static-content 2>/dev/null || true
-
-    echo "🧹 Wiping corrupted generated code and resetting container folder locks..."
+    echo "🧹 Wiping corrupted cache FIRST so the CLI can boot safely..."
     docker-compose exec -T --user root web bash -c "rm -rf var/cache/* var/page_cache/* var/view_preprocessed/* generated/code/* generated/metadata/*"
     docker-compose exec -T --user root web bash -c "mkdir -p generated/code generated/metadata var/cache var/page_cache var/view_preprocessed && chmod -R 777 generated var pub/static app/etc"
+
+    echo "🛡️ Quarantining troublesome modules to protect the build..."
+    # 1. LiteMage: Physical move and manual config scrub so it doesn't ghost crash the CLI
+    docker-compose exec -T --user root web bash -c "mv app/code/Litespeed /tmp/Litespeed_backup 2>/dev/null || true"
+    docker-compose exec -T --user root web sed -i '/Litespeed_Litemage/d' app/etc/config.php 2>/dev/null || true
+    
+    # 2. Feefo & Phpro: Now that the CLI is healthy, disable them safely
+    docker-compose exec -T --user nobody web bin/magento module:disable Feefo_Reviews Phpro_CookieConsent --clear-static-content
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user nobody web bin/magento setup:upgrade
