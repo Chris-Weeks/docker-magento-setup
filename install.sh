@@ -97,14 +97,19 @@ check_port() {
             PORT_IN_USE=true
         fi
         
-        # 2. Check WSL's Linux network
-        if [ "$PORT_IN_USE" = false ] && (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1; then
-            PORT_IN_USE=true
+        # 2. Check WSL/Linux network (using nc, ss, or bash tcp)
+        if [ "$PORT_IN_USE" = false ]; then
+            if (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "$port" >/dev/null 2>&1) || \
+               (command -v ss >/dev/null 2>&1 && ss -tuln | grep -q ":$port ") || \
+               ( (echo >/dev/tcp/127.0.0.1/$port) >/dev/null 2>&1 ); then
+                PORT_IN_USE=true
+            fi
         fi
-        
-        # 3. Check Windows Host network via interop
-        if [ "$PORT_IN_USE" = false ] && command -v netstat.exe >/dev/null; then
-            if netstat.exe -an | grep -q -E ":$port\s+.*LISTENING"; then
+
+        # 3. Check Windows Host network (Safely via interop)
+        if [ "$PORT_IN_USE" = false ] && command -v netstat.exe >/dev/null 2>&1; then
+            # The 2>/dev/null catches the "Exec format error" if WSL interop is broken
+            if netstat.exe -an 2>/dev/null | grep -q -E ":$port\s+.*LISTENING"; then
                 PORT_IN_USE=true
             fi
         fi
@@ -116,7 +121,7 @@ check_port() {
             if [[ "$new_port" =~ ^[0-9]+$ ]]; then
                 port=$new_port
             else
-                echo "❌ Invalid port number. Please enter a number."
+                echo "❌ Invalid port number. Please enter a valid number."
             fi
         else
             break
