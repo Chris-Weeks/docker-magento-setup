@@ -27,10 +27,11 @@ RUN mkdir -p /home/nobody && chown -R nobody:nogroup /home/nobody && chmod 777 /
 # We use the -d flag to assign the new home directory to the user profile
 RUN usermod -o -u 1000 -d /home/nobody nobody && groupmod -o -g 1000 nogroup
 
-# 6. Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
-RUN sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/*/vhconf.* \
+# 6. Configure OpenLiteSpeed to point to the Magento pub directory
+# We poison the factory templates so the Docker entrypoint script resets into Magento
+RUN sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/templates/*.conf \
+    && sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/*/vhconf.* \
     && sed -i -E 's/allowSetUID[[:space:]]+0/allowSetUID               1\n  allowOverride           1\n  enableCache             1/g' /usr/local/lsws/conf/vhosts/*/vhconf.*
-
 # Symlink LSPHP to standard PHP command for CLI usage
 RUN ln -sf /usr/local/lsws/lsphp82/bin/php /usr/bin/php
 
