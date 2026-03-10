@@ -17,6 +17,13 @@ RUN /usr/local/lsws/lsphp82/bin/pecl install xdebug \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
+# Give the 'nobody' user a valid home directory for Composer global configs
+ENV COMPOSER_HOME=/tmp/composer
+RUN mkdir -p /tmp/composer && chown -R nobody:nogroup /tmp/composer
+
+# Fix Permissions: OpenLiteSpeed uses 'nobody' instead of 'www-data'
+RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
+
 # Fix Permissions: OpenLiteSpeed uses 'nobody' instead of 'www-data'
 # We use the -o flag to allow non-unique IDs in case the base image already uses 1000
 RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
