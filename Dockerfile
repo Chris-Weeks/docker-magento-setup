@@ -1,53 +1,30 @@
-FROM php:8.2-apache
+# Start from the official OpenLiteSpeed image pre-loaded with PHP 8.2
+FROM litespeedtech/openlitespeed:1.7.19-lsphp82
 
-# 1. Map the container's www-data user to the host's UID/GID to prevent permission errors
-ARG UID=1000
-ARG GID=1000
-RUN usermod -u ${UID} www-data && groupmod -g ${GID} www-data
-
-# 2. Ensure www-data owns its home directory so Composer can write global auth configs
-RUN mkdir -p /var/www/.composer && chown -R www-data:www-data /var/www
-
-# 3. Install required system packages (added curl & gnupg for Node.js)
+# Install Magento required extensions for LSPHP + Node.js/Grunt
 RUN apt-get update && apt-get install -y \
-    libfreetype6-dev libjpeg62-turbo-dev libpng-dev libicu-dev \
-    libzip-dev libxslt1-dev git unzip wget nano libsodium-dev libxml2-dev curl gnupg
-
-# 4. Install Node.js 18.x and Grunt CLI globally
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
+    wget curl git unzip nano cron mariadb-client \
+    lsphp82-mysql lsphp82-opcache lsphp82-intl lsphp82-gd \
+    lsphp82-bcmath lsphp82-soap lsphp82-zip lsphp82-sodium lsphp82-redis \
+    nodejs npm \
     && npm install -g grunt-cli
 
-# 5. Configure and install PHP extensions required by Magento 2.4.7
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) gd bcmath intl pdo_mysql soap xsl zip sockets sodium opcache
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
-# 6. Enable Apache Mod Rewrite for Magento Routing
-RUN a2enmod rewrite
+# Fix Permissions: OpenLiteSpeed uses 'nobody' instead of 'www-data'
+# We map 'nobody' to your WSL user ID (1000) to prevent locked files in Windows
+RUN usermod -u 1000 nobody && groupmod -g 1000 nogroup
 
-# 7. Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
+RUN sed -i 's|docRoot                   $VH_ROOT/html/|docRoot                   /var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/Example/vhconf.xml \
+    && sed -i 's|allowSetUID               0|allowSetUID               1\n  allowOverride           1\n  enableCache             1|g' /usr/local/lsws/conf/vhosts/Example/vhconf.xml
 
-# 8. Install Xdebug (Disabled by default so it doesn't slow down the site. Use toggle script to enable)
-RUN pecl install xdebug-3.2.1 \
-    && echo "zend_extension=xdebug.so\n\
-xdebug.mode=debug\n\
-xdebug.start_with_request=yes\n\
-xdebug.client_host=host.docker.internal\n\
-xdebug.client_port=9003\n\
-xdebug.idekey=VSCODE" > /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini.disabled
+# Symlink LSPHP to standard PHP command for CLI usage
+RUN ln -sf /usr/local/lsws/lsphp82/bin/php /usr/bin/php
 
-# 9. Install Mailpit routing
-RUN wget https://github.com/mailhog/mhsendmail/releases/download/v0.2.0/mhsendmail_linux_amd64 -O /usr/local/bin/mhsendmail \
-    && chmod +x /usr/local/bin/mhsendmail \
-    && echo 'sendmail_path = "/usr/local/bin/mhsendmail --smtp-addr=mailpit:1025"' > /usr/local/etc/php/conf.d/mailpit.ini
-
-# 10. Increase Memory Limit to 10GB
-RUN echo "memory_limit = 10G" > /usr/local/etc/php/conf.d/magento-memory.ini
-
-# 11. Update Apache DocumentRoot to point to Magento's /pub folder securely
-ENV APACHE_DOCUMENT_ROOT /var/www/html/pub
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
-
+# Set working directory
 WORKDIR /var/www/html
+
+# Expose standard HTTP/HTTPS and LiteSpeed WebAdmin ports
+EXPOSE 80 443 7080
