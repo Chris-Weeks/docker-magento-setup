@@ -1,14 +1,18 @@
 # Start from the official OpenLiteSpeed image pre-loaded with PHP 8.2
 FROM litespeedtech/openlitespeed:1.7.19-lsphp82
 
-# Install Magento required extensions for LSPHP + Node.js/Grunt
+# 1. Install system tools, LiteSpeed's mega-package (common), and build tools for PECL
 RUN apt-get update && apt-get install -y \
-    wget curl git unzip nano cron mariadb-client \
-    lsphp82-mysql lsphp82-opcache lsphp82-intl lsphp82-gd \
-    lsphp82-bcmath lsphp82-soap lsphp82-zip lsphp82-sodium lsphp82-redis \
-    lsphp82-xdebug \
+    wget curl git unzip nano cron mariadb-client build-essential \
+    lsphp82-common lsphp82-curl lsphp82-mysql lsphp82-opcache \
+    lsphp82-intl lsphp82-redis lsphp82-dev lsphp82-pear \
     nodejs npm \
     && npm install -g grunt-cli
+
+# 2. Build Xdebug via PECL (LiteSpeed doesn't provide it via apt on Ubuntu)
+# We then append the zend_extension directly to LiteSpeed's php.ini
+RUN /usr/local/lsws/lsphp82/bin/pecl install xdebug \
+    && echo "zend_extension=xdebug.so" >> /usr/local/lsws/lsphp82/etc/php/8.2/php.ini
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
