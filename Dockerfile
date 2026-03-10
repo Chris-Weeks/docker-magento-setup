@@ -18,8 +18,8 @@ RUN /usr/local/lsws/lsphp82/bin/pecl install xdebug \
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
 # Fix Permissions: OpenLiteSpeed uses 'nobody' instead of 'www-data'
-# We map 'nobody' to your WSL user ID (1000) to prevent locked files in Windows
-RUN usermod -u 1000 nobody && groupmod -g 1000 nogroup
+# We use the -o flag to allow non-unique IDs in case the base image already uses 1000
+RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
 
 # Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
 RUN sed -i 's|docRoot                   $VH_ROOT/html/|docRoot                   /var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/Example/vhconf.xml \
