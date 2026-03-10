@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     wget curl git unzip nano cron mariadb-client \
     lsphp82-mysql lsphp82-opcache lsphp82-intl lsphp82-gd \
     lsphp82-bcmath lsphp82-soap lsphp82-zip lsphp82-sodium lsphp82-redis \
+    lsphp82-xdebug \
     nodejs npm \
     && npm install -g grunt-cli
 
