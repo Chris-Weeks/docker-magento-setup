@@ -10,9 +10,10 @@ RUN apt-get update && apt-get install -y \
     && npm install -g grunt-cli
 
 # 2. Build Xdebug via PECL (LiteSpeed doesn't provide it via apt on Ubuntu)
-# We then append the zend_extension directly to LiteSpeed's php.ini
+# We then append the zend_extension and increase the memory_limit directly in LiteSpeed's php.ini
 RUN /usr/local/lsws/lsphp82/bin/pecl install xdebug \
-    && echo "zend_extension=xdebug.so" >> /usr/local/lsws/lsphp82/etc/php/8.2/php.ini
+    && echo "zend_extension=xdebug.so" >> /usr/local/lsws/lsphp82/etc/php/8.2/php.ini \
+    && echo "memory_limit=4G" >> /usr/local/lsws/lsphp82/etc/php/8.2/php.ini
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
