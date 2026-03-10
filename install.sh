@@ -301,7 +301,7 @@ docker-compose exec -T --user nobody web bin/magento setup:config:set --session-
 docker-compose exec -T --user nobody web bin/magento setup:config:set --amqp-host=rabbitmq --amqp-port=5672 --amqp-user=guest --amqp-password=guest -n
 
 echo "🧹 Locking Permissions & Clearing Cache..."
-docker-compose exec -T --user root web chown -R www-data:www-data var/ pub/static/ pub/media/ generated/ auth.json || true
+docker-compose exec -T --user root web chown -R nobody:nogroup var/ pub/static/ pub/media/ generated/ auth.json || true
 docker-compose exec -T --user root web chmod -R 777 var/ pub/static/ pub/media/ generated/ auth.json || true
 docker-compose exec -T --user nobody web bin/magento cache:flush
 
