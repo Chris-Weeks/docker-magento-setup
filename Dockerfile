@@ -21,9 +21,10 @@ COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 # We use the -o flag to allow non-unique IDs in case the base image already uses 1000
 RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
 
-# Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
-RUN sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/Example/vhconf.conf \
-    && sed -i -E 's/allowSetUID[[:space:]]+0/allowSetUID               1\n  allowOverride           1\n  enableCache             1/g' /usr/local/lsws/conf/vhosts/Example/vhconf.conf
+# 3. Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
+# We use wildcards (*) so it works whether LiteSpeed named it 'Example', 'localhost', '.conf', or '.xml'
+RUN sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/*/vhconf.* \
+    && sed -i -E 's/allowSetUID[[:space:]]+0/allowSetUID               1\n  allowOverride           1\n  enableCache             1/g' /usr/local/lsws/conf/vhosts/*/vhconf.*
 
 # Symlink LSPHP to standard PHP command for CLI usage
 RUN ln -sf /usr/local/lsws/lsphp82/bin/php /usr/bin/php
