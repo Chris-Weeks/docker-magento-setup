@@ -58,10 +58,12 @@ elif [ "$INSTALL_TYPE" == "2" ]; then
 
         VENDOR_COUNT=$((VENDOR_COUNT+1))
         
+        # 1. Keep in script's active memory for the Composer command
         export VENDOR_URL_${VENDOR_COUNT}="$V_URL"
         export VENDOR_PUB_KEY_${VENDOR_COUNT}="$V_PUB"
         export VENDOR_PRIV_KEY_${VENDOR_COUNT}="$V_PRIV"
         
+        # 2. Save to .env file for Docker
         echo "VENDOR_URL_$VENDOR_COUNT=$V_URL" >> .env
         echo "VENDOR_PUB_KEY_$VENDOR_COUNT=$V_PUB" >> .env
         echo "VENDOR_PRIV_KEY_$VENDOR_COUNT=$V_PRIV" >> .env
@@ -158,6 +160,7 @@ if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
         echo "🌐 Mapping $DOMAIN to localhost..."
         echo "⚠️  Look at your taskbar! A Windows Administrator prompt (UAC) will pop up."
         echo "   Please click 'Yes' to automatically add the domain to your Windows hosts file."
+        # Fire a hidden elevated PowerShell command from WSL to edit the Windows file cleanly
         powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-WindowStyle Hidden -Command Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value \"127.0.0.1 $DOMAIN\"'"
         sleep 2
     else
@@ -258,12 +261,11 @@ if [ "$INSTALL_TYPE" == "2" ]; then
     fi
 
     echo "📥 Installing custom Composer dependencies..."
+    # Note: Deliberately removing -T so interactive prompts for missing credentials work safely
     docker-compose exec --user www-data web composer install -d /var/www/html
 
-    echo "🛡️ Disabling production-specific caching modules for local dev..."
-    # Disable LiteMage if it exists
-    docker-compose exec --user www-data web bin/magento module:disable Litespeed_Litemage || true
-    # (You can add others here in the future if needed, like Fastly_Cdn)
+    echo "🛡️ Temporarily disabling LiteMage for initial database compilation..."
+    docker-compose exec -T --user www-data web bin/magento module:disable Litespeed_Litemage || true
 
     echo "🚀 Running setup:upgrade to register custom modules..."
     docker-compose exec -T --user www-data web bin/magento setup:upgrade
@@ -323,6 +325,23 @@ EOF
     echo "✅ Aliases added successfully! (Run 'source ~/.bashrc' or restart your terminal to use them)."
 else
     echo "✅ Aliases already configured in ~/.bashrc."
+fi
+
+# ==========================================
+# ⚡ LITEMAGE OPT-IN
+# ==========================================
+if [ "$INSTALL_TYPE" == "2" ]; then
+    echo ""
+    read -p "🚀 Would you like to enable the LiteSpeed (LiteMage) caching module? (y/n): " ENABLE_LITEMAGE
+    if [[ "$ENABLE_LITEMAGE" =~ ^[Yy]$ ]]; then
+        echo "⚡ Enabling LiteMage..."
+        docker-compose exec --user www-data web bin/magento module:enable Litespeed_Litemage
+        docker-compose exec --user www-data web bin/magento setup:upgrade
+        docker-compose exec --user www-data web bin/magento cache:flush
+        echo "✅ LiteMage successfully enabled!"
+    else
+        echo "⏸️ LiteMage remains disabled for standard local development."
+    fi
 fi
 
 # ==========================================
