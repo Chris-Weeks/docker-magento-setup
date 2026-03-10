@@ -22,8 +22,9 @@ COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 RUN usermod -o -u 1000 nobody && groupmod -o -g 1000 nogroup
 
 # Configure OpenLiteSpeed to point to the Magento pub directory and read .htaccess
-RUN sed -i 's|docRoot                   $VH_ROOT/html/|docRoot                   /var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/Example/vhconf.xml \
-    && sed -i 's|allowSetUID               0|allowSetUID               1\n  allowOverride           1\n  enableCache             1|g' /usr/local/lsws/conf/vhosts/Example/vhconf.xml
+# (The Docker image uses 'localhost' instead of 'Example' for its default vhost)
+RUN sed -i 's|$VH_ROOT/html/|/var/www/html/pub/|g' /usr/local/lsws/conf/vhosts/localhost/vhconf.xml \
+    && sed -i -E 's/allowSetUID[[:space:]]+0/allowSetUID               1\n  allowOverride           1\n  enableCache             1/g' /usr/local/lsws/conf/vhosts/localhost/vhconf.xml
 
 # Symlink LSPHP to standard PHP command for CLI usage
 RUN ln -sf /usr/local/lsws/lsphp82/bin/php /usr/bin/php
